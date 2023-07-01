@@ -7,7 +7,7 @@
 #include <igl/opengl/glfw/Viewer.h>
 #include "Type.h"
 #include "TriMesh.h"
-
+//YH
 class PointCloud
 {
 private:
