@@ -19,6 +19,7 @@
 #include <boost/iterator/zip_iterator.hpp>
 #include <boost/random.hpp>
 #include <utility>
+#include "spdlog/spdlog.h"
 
 
 const double PI = 3.1415926;

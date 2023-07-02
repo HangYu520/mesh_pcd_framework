@@ -24,7 +24,10 @@ void TriMesh::writeOBJ(const char* filepath)
 {
 	if (Empty())
 		return;
-	igl::writeOBJ(filepath, m_vertices, m_faces);
+	if (igl::writeOBJ(filepath, m_vertices, m_faces))
+		spdlog::info("write mesh to {} successfully!", filepath);
+	else
+		spdlog::error("failed to write mesh to {}", filepath);
 }
 
 void TriMesh::SetMesh(Mesh& mesh)
@@ -273,7 +276,7 @@ Eigen::MatrixXd TriMesh::boundary()
 
 void TriMesh::LaplaceSmooth()
 {
-	std::cout << "Laplace Smooth" << std::endl;
+	spdlog::info("Laplace Smooth");
 	//smooth once time, call function multiple times to smooth ieratively
 	auto M = massMatrix(igl::MASSMATRIX_TYPE_BARYCENTRIC);
 	auto L = cotLaplace();
@@ -320,7 +323,9 @@ void TriMesh::MarchingCubes(Eigen::VectorXd& S, Eigen::MatrixXd& GV,
     * nz  resolutions of the grid in z dimension
 	* isovalue: the isovalue of the surface to reconstruct
 	*/
-	std::cout << "Reconstruct iso-face via marching cubes" << std::endl;
+	spdlog::info("Reconstruct iso-face via marching cubes");
+	Timer timer;
+	timer.start();
 	igl::marching_cubes(S, GV, nx, ny, nz, isovalue, m_vertices, m_faces);
-	std::cout << "Done" << std::endl;
+	spdlog::info("Done. Time: {} s", timer.time());
 }

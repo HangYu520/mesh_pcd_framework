@@ -35,7 +35,7 @@ void savePointCloudToXYZ(const Eigen::MatrixXd& P, const Eigen::MatrixXd& C, con
     assert(P.rows() == C.rows() && P.cols() == 3 && C.cols() == 3);
     std::ofstream ofs(filename, std::ios_base::out);
     if (!ofs.is_open()) {
-        std::cerr << "Failed to open file " << filename << " for writing" << std::endl;
+        spdlog::error("Failed to open file {} for writing", filename);
         return;
     }
     for (int i = 0; i < P.rows(); ++i) {
@@ -43,7 +43,7 @@ void savePointCloudToXYZ(const Eigen::MatrixXd& P, const Eigen::MatrixXd& C, con
             C(i, 0) * 255 << " " << C(i, 1) * 255 << " " << C(i, 2) * 255 << std::endl;
     }
     ofs.close();
-    std::cout << "Saved points to file: " << filename << std::endl;
+    spdlog::info("points are saved to {}", filename);
 }
 
 std::vector<Segment_2> deleterepeatpoints(std::vector<Segment_2>& connect_segments)
@@ -139,13 +139,16 @@ void PointCloud::ReadFromFile(const char* filepath)
         CGAL::parameters::point_map(m_pointset.point_push_map())
         .normal_map(m_pointset.normal_push_map())))
     {
-        std::cerr << "Can't read input file " << filepath << std::endl;
+        spdlog::error("Can't read input file {}", filepath);
     }
 }
 
 void PointCloud::WriteXYZ(const char* filepath)
 {
-    CGAL::IO::write_XYZ(filepath, m_pointset);
+    if (CGAL::IO::write_XYZ(filepath, m_pointset))
+        spdlog::info("save point cloud to {} successfully!", filepath);
+    else
+        spdlog::error("failed to save file {}", filepath);
 }
 
 Eigen::MatrixXd PointCloud::GetColors() const
@@ -237,11 +240,11 @@ void PointCloud::DrawMainDir(igl::opengl::glfw::Viewer& viewer)
         bbx.ymax() - bbx.ymin()),
         bbx.zmax() - bbx.zmin()) / 2;
     //need input main directions
-    std::cout << "Please input the first direction:\n";
+    spdlog::info("Please input the first direction: ");
     std::cin >> E(0, 0) >> E(0, 1) >> E(0, 2);
-    std::cout << "Please input the second direction:\n";
+    spdlog::info("Please input the second direction: ");
     std::cin >> E(1, 0) >> E(1, 1) >> E(1, 2);
-    std::cout << "Please input the third direction:\n";
+    spdlog::info("Please input the third direction: ");
     std::cin >> E(2, 0) >> E(2, 1) >> E(2, 2);
     E = C + length * E;
     int width = 1;
@@ -254,12 +257,12 @@ void PointCloud::DrawBoundary(igl::opengl::glfw::Viewer& viewer, double alpha, i
     //projection first
     viewer.data().clear_points();
     AlphaShapeData asd = alpha_shape_2d(alpha);
-    std::cout << "recompute with alpha = " << asd.optimal_alpha * 10 << std::endl;
+    spdlog::info("recompute with alpha = {}", asd.optimal_alpha * 10);
     AlphaShapeData asd2 = alpha_shape_2d(asd.optimal_alpha * 10);
     std::vector<Segment_2> segments = asd2.segments;
     std::vector<Segment_2> c_segments = connect_segments(segments);
     //print info
-    std::cout << "num of boundary points: " << c_segments.size() << std::endl;
+    spdlog::info("num of boundary points: {}", c_segments.size());
     //delete short segments
     //std::vector<Segment_2> nsc_segments = deleteshortSegments(c_segments); // no short connect segments
     //std::cout << "num of deleted boundary points: " << nsc_segments.size() << std::endl;
@@ -268,7 +271,7 @@ void PointCloud::DrawBoundary(igl::opengl::glfw::Viewer& viewer, double alpha, i
     //delete repeat source points in segments
     //std::vector<Segment_2> u_segments = deleterepeatpoints(c_segments);
     //print info
-    std::cout << "num of sampled boundary points: " << d_points.size() << std::endl;
+    spdlog::info("num of sampled boundary points: {}", d_points.size());
     m_pointset.clear();
     //store in Eigen matrix
     Eigen::MatrixXd I_P(c_segments.size(), 3), I_C(c_segments.size(), 3); //initial boundary points
@@ -368,7 +371,7 @@ void PointCloud::EstimateNormal(int n_neighbors)
 {
     Timer timer;
     timer.start();
-    std::cout << "Start Estimate Normals, n_neighbors:" << n_neighbors << std::endl;
+    spdlog::info("Start Estimate Normals, n_neighbors: {}", n_neighbors);
     //CGAL::jet_estimate_normals<Concurrency_tag>
     //    (m_pointset, n_neighbors);
     CGAL::pca_estimate_normals<Concurrency_tag>
@@ -377,7 +380,7 @@ void PointCloud::EstimateNormal(int n_neighbors)
     typename Point_set_3::iterator unoriented_points_begin =
         CGAL::mst_orient_normals(m_pointset, n_neighbors);
     m_pointset.remove(unoriented_points_begin, m_pointset.end());
-    std::cout << "Done.Time:" << timer.time() << "s" << std::endl;
+    spdlog::info("Done. Time: {} s", timer.time());
 }
 
 double PointCloud::AverageSpacing(int n_neighbors)
@@ -391,11 +394,11 @@ Mesh PointCloud::PoissonRecon()
 {
     Timer timer;
     timer.start();
-    std::cout << "Start Poisson Reconstruction." << std::endl;
+    spdlog::info("Start Poisson Reconstruction.");
     Mesh output_mesh;
     if (!m_pointset.has_normal_map())
     {
-        std::cerr << "Please Estimate Normal First." << std::endl;
+        spdlog::warn("Please Estimate Normal First.");
         return output_mesh;
     }
     double spacing = AverageSpacing();
@@ -403,7 +406,7 @@ Mesh PointCloud::PoissonRecon()
     (m_pointset.begin(), m_pointset.end(),
         m_pointset.point_map(), m_pointset.normal_map(),
         output_mesh, spacing);
-    std::cout << "Done.Time:" << timer.time() << "s" << std::endl;
+    spdlog::info("Done. Time: {} s", timer.time());
     return output_mesh;
 }
 
@@ -413,8 +416,7 @@ std::vector<Mesh> PointCloud::IterPoissonRecon(double convgence_thres)
     timer.start();
     //implementaion of iPSR, TOG, 2022
     //return a mesh vector of each iter steps
-    std::cout << "Start iterative Poisson Reconstruction. convergence_thres: "
-        << convgence_thres << std::endl;
+    spdlog::info("Start iterative Poisson Reconstruction. convergence_thres: {}", convgence_thres);
     std::vector<Mesh> mesh_arr;
     //build kdtree for seaching neighbors
     buildKDTree();
@@ -426,7 +428,7 @@ std::vector<Mesh> PointCloud::IterPoissonRecon(double convgence_thres)
     for (int i = 0; i < MaxIter; i++)
     {
         timer.reset();
-        std::cout << "iter:" << i + 1 << std::endl;
+        spdlog::info("iter: {}", i + 1);
         std::priority_queue<double> normal_differ; //normal difference with last iteration
         std::unordered_map<int, std::vector<int>> face_list;
         std::unordered_map<int, double> facearea_list;
@@ -436,7 +438,7 @@ std::vector<Mesh> PointCloud::IterPoissonRecon(double convgence_thres)
         mesh.SetMesh(m);
         Eigen::MatrixXd face_normal = mesh.perFaceNormal();
         Eigen::MatrixXd bary_center = mesh.baryCenter();
-        std::cout << "construct face list,faces:" << mesh.n_faces() << std::endl;
+        spdlog::info("construct face list,faces: {}", mesh.n_faces());
         for (int j = 0; j < mesh.n_faces(); j++)
         {
             facearea_list[j] = mesh.faceArea(j);
@@ -445,7 +447,7 @@ std::vector<Mesh> PointCloud::IterPoissonRecon(double convgence_thres)
             for (int k : neighbors)
                 face_list[k].push_back(j);
         }
-        std::cout << "update normal" << std::endl;
+        spdlog::info("update normal");
         //update the normal of each point
         for (int j = 0; j < n_points(); j++)
         {
@@ -476,14 +478,14 @@ std::vector<Mesh> PointCloud::IterPoissonRecon(double convgence_thres)
             normal_differ.pop();
         }
         averr /= size;
-        std::cout << "average error:" << averr << " time:" << timer.time() << "s" << std::endl;
+        spdlog::info("average error: {} time: {} s", averr, timer.time());
         if (averr < convgence_thres)
         {
-            std::cout << "Convergence" << std::endl;
+            spdlog::info("Convergence");
             break;
         }
     }
-    std::cout << "Done" << std::endl;
+    spdlog::info("Done");
 
     return mesh_arr;
 }
@@ -521,7 +523,7 @@ void PointCloud::addOutliers(double ratio)
         urz(bbx.zmin(), bbx.zmax());
     buildKDTree(); //build kdtree for neighbor search
     //randomly sample outliers in bounding box
-    std::cout << "generating outliers...\n";
+    spdlog::info("generating outliers");
     while (n_outliers > 0)
     {
         Point_3 outlier(urx(zgy), ury(zgy), urz(zgy));
@@ -536,7 +538,7 @@ void PointCloud::addOutliers(double ratio)
         }
     }
     //add outliers to point set
-    std::cout << "insert outliers...\n";
+    spdlog::info("insert outliers");
     for (Point_3 outlier : outliers)
     {
         m_pointset.insert(outlier);
@@ -651,15 +653,9 @@ AlphaShapeData PointCloud::alpha_shape_2d(double alpha)
     Alpha_shape_2 A(points.begin(), points.end(), FT(alpha), Alpha_shape_2::GENERAL);
     FT optimal_alpha = *A.find_optimal_alpha(1);
     //print info
-    std::cout << "Alpha Shape computed" << std::endl;
-    std::cout << "Optimal alpha: " << *A.find_optimal_alpha(1) << std::endl;
-    //std::cout << "recompute with optimal alpha.\n";
-    //Alpha_shape_2 A2(points.begin(), points.end(), optimal_alpha, Alpha_shape_2::GENERAL);
+    spdlog::info("Alpha Shape computed, Optimal alpha: {}", *A.find_optimal_alpha(1));
     alpha_edges(A, std::back_inserter(segments));
-    //print info
-    //std::cout << "Alpha Shape recomputed" << std::endl;
-    std::cout << segments.size() << " alpha shape edges" << std::endl;
-    //std::cout << "Optimal alpha: " << *A2.find_optimal_alpha(1) << std::endl;
+    spdlog::info("{} alpha shape edges", segments.size());
     return AlphaShapeData(segments, optimal_alpha);
 }
 std::vector<Segment_2> PointCloud::connect_segments(std::vector<Segment_2>& segments)
@@ -671,7 +667,7 @@ std::vector<Segment_2> PointCloud::connect_segments(std::vector<Segment_2>& segm
     visited_points.insert(segments[0].target());
     segments.erase(segments.begin());
     //print info
-    std::cout << "connect segments...\n";
+    spdlog::info("connect segments...");
     while (!segments.empty()) {
         bool found = false;
         for (int i = 0; i < segments.size(); i++) {
@@ -684,11 +680,11 @@ std::vector<Segment_2> PointCloud::connect_segments(std::vector<Segment_2>& segm
             }
         }
         if (!found) {
-            std::cout << "Error: segments not connected" << std::endl;
+            spdlog::warn("Some segments are deleted");
             break;
         }
     }
-    std::cout << "segments connected!\n";
+    spdlog::info("segments connected!");
     return connected_segments;
 }
 

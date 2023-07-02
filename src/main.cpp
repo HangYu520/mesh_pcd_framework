@@ -6,9 +6,47 @@
 #include <sstream>
 #include <fstream>
 #include <filesystem>
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
 #include "Type.h"
 #include "TriMesh.h"
 #include "PointCloud.h"
+
+void ScreenShot(igl::opengl::glfw::Viewer& viewer, const std::string& save_path = "res/screenshot.png", int image_width = 1920, int image_height = 1080)
+{
+    // Allocate temporary buffers for image
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> R(image_width, image_height);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> G(image_width, image_height);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> B(image_width, image_height);
+    Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic> A(image_width, image_height);
+
+    // Draw the scene in the buffers
+    viewer.core().draw_buffer(viewer.data(), true, R, G, B, A);
+    
+    // Save image
+    assert((R.rows() == G.rows()) && (G.rows() == B.rows()) && (B.rows() == A.rows()));
+    assert((R.cols() == G.cols()) && (G.cols() == B.cols()) && (B.cols() == A.cols()));
+
+    const int comp = 4;                                  // 4 Channels Red, Green, Blue, Alpha
+    const int stride_in_bytes = R.rows() * comp;           // Length of one row in bytes
+    std::vector<unsigned char> data(R.size() * comp, 0);     // The image itself;
+
+    for (unsigned i = 0; i < R.rows(); ++i)
+    {
+        for (unsigned j = 0; j < R.cols(); ++j)
+        {
+            data[(j * R.rows() * comp) + (i * comp) + 0] = R(i, R.cols() - 1 - j);
+            data[(j * R.rows() * comp) + (i * comp) + 1] = G(i, R.cols() - 1 - j);
+            data[(j * R.rows() * comp) + (i * comp) + 2] = B(i, R.cols() - 1 - j);
+            //data[(j * R.rows() * comp) + (i * comp) + 3] = A(i, R.cols() - 1 - j);
+            data[(j * R.rows() * comp) + (i * comp) + 3] = 255; // set Opacity = 255
+        }
+    }
+    if (stbi_write_png(save_path.c_str(), R.rows(), R.cols(), comp, data.data(), stride_in_bytes))
+        spdlog::info("save screenshot image to {}", save_path);
+    else
+        spdlog::error("failed to save screenshot image {}", save_path);
+}
 
 std::vector<std::string> getAllFiles(const std::string& folder_path) {
     std::vector<std::string> files;
@@ -45,12 +83,12 @@ void backgound_running(const std::string& folder_path)
         //print info
         std::stringstream ss;
         ss << i + 1 << "/" << files.size() << " " << file << ":\n";
-        std::cout << std::endl << ss.str();
+        spdlog::info(ss.str());
 
         //read the file
         pointcloud.ReadFromFile(file.c_str());
-        std::cout << "read point cloud successfully!\n";
-        std::cout << "points size: " << pointcloud.n_points() << std::endl;
+        spdlog::info("read point cloud successfully!");
+        spdlog::info("points size: {}", pointcloud.n_points());
 
         //bounding box
         Bbox_3 bbx = pointcloud.BoundingBox();
@@ -71,7 +109,7 @@ void backgound_running(const std::string& folder_path)
                 max_id = i;
             }
         }
-        std::cout << "max dir: " << dirs[max_id] << " length: " << max_val << std::endl;
+        spdlog::info("max dir: {}    length: {}", max_id, max_val);
 
         //projection
         char dir = dirs[max_id];
@@ -81,19 +119,19 @@ void backgound_running(const std::string& folder_path)
             pointcloud.Project_along_x();
         else if (dir == 'z')
             pointcloud.Project_along_x();
-        std::cout << "projection completed!\n";
+        spdlog::info("projection completed!");
 
         //boundary points
         double alpha = 5;
         int sampled_points = 1000;
         AlphaShapeData asd = pointcloud.alpha_shape_2d(alpha);
-        std::cout << "recompute with alpha = " << asd.optimal_alpha * 10 << std::endl;
+        spdlog::info("recompute with alpha = {}", asd.optimal_alpha * 10);
         AlphaShapeData asd2 = pointcloud.alpha_shape_2d(asd.optimal_alpha * 10);
         std::vector<Segment_2> segments = asd2.segments;
         std::vector<Segment_2> c_segments = pointcloud.connect_segments(segments);
-        std::cout << "num of boundary points: " << c_segments.size() << std::endl;//print info
+        spdlog::info("num of boundary points: {}", c_segments.size());
         std::vector<Point_2> d_points = pointcloud.downsample(c_segments, sampled_points);
-        std::cout << "num of sampled boundary points: " << d_points.size() << std::endl;//print info
+        spdlog::info("num of sampled boundary points: {}", d_points.size());
 
          //scale the points
         pointcloud.clear();
@@ -104,7 +142,7 @@ void backgound_running(const std::string& folder_path)
         double scaled_length = 200;
         double scale_ratio = scaled_length / max_val;
         pointcloud.scale(scale_ratio);
-        std::cout << "scale the points with ratio = " << scale_ratio << std::endl;
+        spdlog::info("scale the points with ratio = {}", scale_ratio);
 
         //save points to xyz file
         std::ofstream xyzfile;
@@ -118,7 +156,7 @@ void backgound_running(const std::string& folder_path)
                 << pointcloud.Point(i).y() << " 0 255 0 0\n";
         }
         xyzfile.close();
-        std::cout << "points saved to " << saved_folder + xyzfilepath << std::endl;
+        spdlog::info("points are saved to {}", saved_folder + xyzfilepath);
     }
 }
 
@@ -154,9 +192,18 @@ int main(int argc, char *argv[])
 	viewer.plugins.push_back(&plugin);
 	igl::opengl::glfw::imgui::ImGuiMenu menu;
 	plugin.widgets.push_back(&menu);
-    viewer.core().background_color = Eigen::Vector4f(1, 1, 1, 0); //default background color is white
+    viewer.core().background_color = Eigen::Vector4f(1.f, 1.f, 1.f, 1.f); //default background color is white
     viewer.data().label_size = 2.f;
     viewer.data().line_width = 2.f;
+    float pcd_window_width = 220;
+    float pcd_window_height = 280;
+    float mesh_window_width = 220;
+    float mesh_window_height = 130;
+    float screenshot_window_width = 220;
+    float screenshot_window_height = 130;
+    int screen_image_width = 1920;
+    int screen_image_height = 1080;
+    std::string screen_image_name = "screenshot.png";
                                                                 
     // Customize the menu
     double doubleVariable = 0.1f; // Shared between two menus
@@ -175,13 +222,13 @@ int main(int argc, char *argv[])
     {
         // Define next window position + size
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling(), 0), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(400, 400), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(pcd_window_width, pcd_window_height), ImGuiCond_FirstUseEver);
         
         //Pointcloud window
         ImGui::Begin("PointCloud", nullptr, ImGuiWindowFlags_NoSavedSettings);
         if (ImGui::Button("PointCloud Info"))
         {
-            std::cout << "points:" << pointcloud.n_points() << std::endl;
+            spdlog::info("points: {}", pointcloud.n_points());
         }
         ImGui::SameLine();
         if (ImGui::Button("Save"))
@@ -190,7 +237,7 @@ int main(int argc, char *argv[])
         }
         if (ImGui::Button("AverageSpacing"))
         {
-            std::cout << "average spacing: " << pointcloud.AverageSpacing() << std::endl;
+            spdlog::info("average spacing: {}", pointcloud.AverageSpacing());
         }
         ImGui::SameLine();
         if (ImGui::Button("EstimateNormal"))
@@ -231,7 +278,7 @@ int main(int argc, char *argv[])
         {
             //set mu and sigma
             double mu, sigma;
-            std::cout << "Please input mean(mu) and variance(sigma):";
+            spdlog::info("Please input mean(mu) and variance(sigma):");
             std::cin >> mu >> sigma;
             pointcloud.addGaussNoise(mu, sigma);
             Update();
@@ -240,7 +287,7 @@ int main(int argc, char *argv[])
         if (ImGui::Button("addOutliers"))
         {
             double ratio;
-            std::cout << "Please input ratio of outliers:";
+            spdlog::info("Please input ratio of outliers:");
             std::cin >> ratio;
             pointcloud.addOutliers(ratio);
             Update();
@@ -258,7 +305,7 @@ int main(int argc, char *argv[])
         ImGui::SameLine();
         if (ImGui::Button("Projection"))
         {
-            std::cout << "choose a direction to project(x,y,z):";
+            spdlog::info("choose a direction to project(x,y,z): ");
             char dir;
             std::cin >> dir;
             if (dir == 'x')
@@ -272,10 +319,10 @@ int main(int argc, char *argv[])
         ImGui::SameLine();
         if (ImGui::Button("boundary points"))
         {
-            std::cout << "Please input the required num of boundary points: ";
+            spdlog::info("Please input the required num of boundary points: ");
             int sampled_points;
             std::cin >> sampled_points;
-            std::cout << "Please input the alpha in alpha shape computation: ";
+            spdlog::info("Please input the alpha in alpha shape computation: ");
             double alpha;
             std::cin >> alpha;
             pointcloud.DrawBoundary(viewer, alpha, sampled_points);
@@ -288,10 +335,10 @@ int main(int argc, char *argv[])
         ImGui::SameLine();
         if (ImGui::Button("scale"))
         {
-            std::cout << "Please input the direction: ";
+            spdlog::info("Please input the direction: ");
             char dir;
             std::cin >> dir;
-            std::cout << "Please input the scaled length: ";
+            spdlog::info("Please input the scaled length: ");
             double length;
             std::cin >> length;
             double ratio;
@@ -315,22 +362,22 @@ int main(int argc, char *argv[])
             pointcloud.removeDuplicatePoints();
             int new_points = pointcloud.n_points();
             if (original_points == new_points)
-                std::cout << "No duplicate points!\n";
+                spdlog::info("No duplicate points!");
             else
-                std::cout << "remove " << original_points - new_points << " points\n";
+                spdlog::info("remove {} points", original_points - new_points);
             Update();
         }
         if (ImGui::Button("background running"))
         {
-            std::cout << "Please input the folder path: ";
+            spdlog::info("Please input the folder path: ");
             std::string folder_path;
             std::cin >> folder_path;
             backgound_running(folder_path);
         }
         ImGui::End();
 
-        ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + 400, 0), ImGuiCond_FirstUseEver);
-        ImGui::SetNextWindowSize(ImVec2(400, 280), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width, 0), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(mesh_window_width, mesh_window_height), ImGuiCond_FirstUseEver);
 
         //Mesh window
         ImGui::Begin("TriMesh", nullptr, ImGuiWindowFlags_NoSavedSettings);
@@ -338,8 +385,7 @@ int main(int argc, char *argv[])
         // Expose the same variable directly ...
         if (ImGui::Button("Mesh Info"))
         {
-            std::cout << "vertices:" << mesh.n_vertices() << std::endl;
-            std::cout << "faces:" << mesh.n_faces() << std::endl;
+            spdlog::info("vertices: {}    faces: {}", mesh.n_vertices(), mesh.n_faces());
         }
         if (ImGui::Button("Laplace Smooth"))
         {
@@ -355,7 +401,7 @@ int main(int argc, char *argv[])
         if (ImGui::Button("Draw Segmentation"))
         {
             //get segmentation txt file
-            std::cout << "Please input the txt file path:";
+            spdlog::info("Please input the txt file path: ");
             std::string filepath, line;
             std::cin >> filepath;
             std::ifstream file(filepath);
@@ -370,8 +416,8 @@ int main(int argc, char *argv[])
         ImGui::SameLine();
         if (ImGui::Button("Draw Data"))
         {
-            //get data file patt
-            std::cout << "Please input the txt file path:";
+            //get data file path
+            spdlog::info("Please input the txt file path: ");
             std::string filepath;
             std::cin >> filepath;
             std::ifstream file(filepath);
@@ -388,6 +434,23 @@ int main(int argc, char *argv[])
         {
             mesh.Drawboundary(viewer);
         }
+        ImGui::End();
+
+        // Define next window position + size
+        ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width + mesh_window_width, 0), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(screenshot_window_width, screenshot_window_height), ImGuiCond_FirstUseEver);
+
+        // Screenshot window
+        ImGui::Begin("ScreenShot", nullptr, ImGuiWindowFlags_NoSavedSettings);
+        if (ImGui::Button("ScreenShot"))
+        {
+            std::string folder_path = "res/";
+            ScreenShot(viewer, folder_path + screen_image_name, screen_image_width, screen_image_height);
+        }
+        ImGui::SameLine();
+        ImGui::InputText("", screen_image_name);
+        ImGui::InputInt("width", &screen_image_width);
+        ImGui::InputInt("height", &screen_image_height);
         ImGui::End();
     };
     
