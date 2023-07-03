@@ -387,6 +387,11 @@ int main(int argc, char *argv[])
         {
             spdlog::info("vertices: {}    faces: {}", mesh.n_vertices(), mesh.n_faces());
         }
+        ImGui::SameLine();
+        if (ImGui::Button("save"))
+        {
+            mesh.writeOBJ("res/mesh/save/save.obj");
+        }
         if (ImGui::Button("Laplace Smooth"))
         {
             mesh.LaplaceSmooth();
@@ -433,6 +438,12 @@ int main(int argc, char *argv[])
         if (ImGui::Button("boundary"))
         {
             mesh.Drawboundary(viewer);
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("mirror2D"))
+        {
+            mesh.mirror2D();
+            Update();
         }
         ImGui::End();
 

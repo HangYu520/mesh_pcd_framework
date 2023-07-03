@@ -2,6 +2,7 @@
 #include <igl/read_triangle_mesh.h>
 #include <igl/opengl/glfw/Viewer.h>
 #include <igl/boundary_loop.h>
+#include <igl/bounding_box.h>
 #include <unordered_map>
 #include "Type.h"
 
@@ -38,6 +39,7 @@ public:
 	void Drawboundary(igl::opengl::glfw::Viewer& viewer);
 	//operation
 	double AverageEdgeLength();
+	Bbox_3 BoundingBox(); // bounding box of the mesh
 	Eigen::MatrixXd perVertexNormal();
 	Eigen::MatrixXd perFaceNormal();
 	Eigen::SparseMatrix<double> cotLaplace();
@@ -50,6 +52,7 @@ public:
 	Eigen::MatrixXd Grad(Eigen::VectorXd& value);
 	double faceArea(int face_id); //compute area of face[face_id]
 	Eigen::MatrixXd boundary(); //compute the boundary verts
+	void mirror2D(); //mirror a 2D mesh
 	//algorithm
 	void LaplaceSmooth();
 	void LoopSubdiv(int number_of_subdivs = 1);

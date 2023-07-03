@@ -166,6 +166,21 @@ double TriMesh::AverageEdgeLength()
 	return igl::avg_edge_length(m_vertices, m_faces);
 }
 
+Bbox_3 TriMesh::BoundingBox()
+{
+	Eigen::MatrixXd BV; // vertices of bounding box
+	Eigen::MatrixXi BF; // faces of bounding box
+	igl::bounding_box(m_vertices, BV, BF);
+	double xmin = BV.col(0).minCoeff();
+	double xmax = BV.col(0).maxCoeff();
+	double ymin = BV.col(1).minCoeff();
+	double ymax = BV.col(1).maxCoeff();
+	double zmin = BV.col(2).minCoeff();
+	double zmax = BV.col(2).maxCoeff();
+	Bbox_3 bbx(xmin, ymin, zmin, xmax, ymax, zmax);
+	return bbx;
+}
+
 Eigen::MatrixXd TriMesh::perVertexNormal()
 {
 	//return normals of each vertex
@@ -272,6 +287,20 @@ Eigen::MatrixXd TriMesh::boundary()
 	for (int i = 0; i < boundary.size(); i++)
 			boundary_points.row(i) = m_vertices.row(boundary[i]);
 	return boundary_points;
+}
+
+void TriMesh::mirror2D()
+{
+	Bbox_3 bbx = BoundingBox();
+	Eigen::MatrixXd center(1, 3);
+	center << (bbx.xmin() + bbx.xmax()) / 2,
+		(bbx.ymin() + bbx.ymax()) / 2,
+		(bbx.zmin() + bbx.zmax()) / 2;
+	//2D mesh z = 0
+	for (int i = 0; i < n_vertices(); i++)
+	{
+		m_vertices(i, 0) = 2 * center(0, 0) - m_vertices(i, 0);
+	}
 }
 
 void TriMesh::LaplaceSmooth()
