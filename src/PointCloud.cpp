@@ -367,6 +367,20 @@ Vector_3 PointCloud::RandomUnitNormal()
     return Vector_3(p.x(), p.y(), p.z());
 }
 
+std::vector<Color> PointCloud::randomColor(int n_colors)
+{
+    std::vector<Color> colors;
+    boost::mt19937 zgy;  //Uniform pseudorandom number generator
+    zgy.seed(static_cast<unsigned int>(time(0)));	//random seed
+    boost::uniform_real<> ur(0, 1);
+    for (int i = 0; i < n_colors; i++)
+    {
+        Color color = Color{ ur(zgy), ur(zgy), ur(zgy) };
+        colors.push_back(color);
+    }
+    return colors;
+}
+
 void PointCloud::EstimateNormal(int n_neighbors)
 {
     Timer timer;

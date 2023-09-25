@@ -374,6 +374,7 @@ int main(int argc, char *argv[])
             std::cin >> folder_path;
             backgound_running(folder_path);
         }
+
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width, 0), ImGuiCond_FirstUseEver);

@@ -37,6 +37,7 @@ public:
 	void DrawBoundingBox(igl::opengl::glfw::Viewer& viewer);
 	//algo
 	Vector_3 RandomUnitNormal();
+	std::vector<Color> randomColor(int n_colors); //generate n colors randomly
 	void EstimateNormal(int n_neighbors = 20);
 	Mesh PoissonRecon();
 	std::vector<Mesh> IterPoissonRecon(double convgence_thres = 0.175);
