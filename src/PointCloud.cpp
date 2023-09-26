@@ -33,6 +33,17 @@ static double angle(const Vector_3& v1, const Vector_3& v2)
     return angle;
 }
 
+static bool exsist(Vector_3& v, std::vector<Vector_3>& arr)
+{
+    for (int i = 0; i < arr.size(); i++)
+    {
+        if (arr[i] == v)
+            return true;
+    }
+
+    return false;
+}
+
 template <class OutputIterator>
 void alpha_edges(const Alpha_shape_2& A, OutputIterator out)
 {
@@ -400,6 +411,36 @@ void PointCloud::DrawRegiongrow(igl::opengl::glfw::Viewer& viewer, double eta, i
     viewer.data().set_points(P, C);
     viewer.data().point_size = 4.0;
     viewer.core().align_camera_center(P);
+}
+
+void PointCloud::DrawRefDir(igl::opengl::glfw::Viewer& viewer)
+{
+    std::vector<Vector_3> ref_dirs = reference_direction();
+    Bbox_3 bbx = BoundingBox();
+    Eigen::MatrixXd P1(3, 3), P2(3, 3), C(3, 3);
+    Point_3 center((bbx.xmin() + bbx.xmax()) / 2,
+        (bbx.ymin() + bbx.ymax()) / 2,
+        (bbx.zmin() + bbx.zmax()) / 2);
+    double x_length = bbx.xmax() - bbx.xmin();
+    double y_length = bbx.ymax() - bbx.ymin();
+    double z_length = bbx.zmax() - bbx.zmin();
+    double L = 0.5 * sqrt(x_length * x_length + y_length * y_length + z_length * z_length);
+    P1.row(0) << center.x(), center.y(), center.z();
+    P1.row(1) = P1.row(0);
+    P1.row(2) = P1.row(0);
+    Point_3 p1 = center + L * ref_dirs[0];
+    P2.row(0) << p1.x(), p1.y(), p1.z();
+    Point_3 p2 = center + L * ref_dirs[1];
+    P2.row(1) << p2.x(), p2.y(), p2.z();
+    Point_3 p3 = center + L * ref_dirs[2];
+    P2.row(2) << p3.x(), p3.y(), p3.z();
+    C << 1, 0, 0,
+        0, 1, 0,
+        0, 0, 1;
+    viewer.data().add_edges(P1, P2, C);
+    viewer.data().add_label(P2.row(0), "r1");
+    viewer.data().add_label(P2.row(1), "r2");
+    viewer.data().add_label(P2.row(2), "r3");
 }
 
 Vector_3 PointCloud::RandomUnitNormal()
@@ -807,6 +848,64 @@ std::vector<Primitive> PointCloud::improved_region_grow(double eta, int min_supp
     spdlog::info("Extract {} planar primitives.", primitives.size());
     
     return primitives;
+}
+
+std::vector<Vector_3> PointCloud::reference_direction()
+{
+    // input pointset with L0 optimized normals
+    std::vector<Vector_3> ref_dirs; // return value
+    std::vector<Vector_3> optimized_normals, original_normals;
+    for (int i = 0; i < n_points(); i++)
+    {
+        optimized_normals.push_back(m_pointset.normal(i));
+        if (!exsist(m_pointset.normal(i), ref_dirs))
+        {
+            ref_dirs.push_back(m_pointset.normal(i));
+        }
+    }
+    EstimateNormal(30); // get original normals
+    for (int i = 0; i < n_points(); i++)
+    {
+        original_normals.push_back(m_pointset.normal(i));
+        m_pointset.normal(i) = optimized_normals[i];
+    }
+    //compute error
+    std::vector<int> index_arr;
+    std::vector<double> error_arr;
+    for (int i = 0; i < n_points(); i++)
+    {
+        Vector_3 v = optimized_normals[i];
+        for(int j = 0; j < ref_dirs.size(); j++)
+            if (v == ref_dirs[j])
+            {
+                index_arr.push_back(j);
+                break;
+            }
+        Vector_3 e_vect = optimized_normals[i] - original_normals[i];
+        error_arr.push_back(e_vect.squared_length());
+    }
+    std::array<double, 3> error = { 0.0, 0.0, 0.0 };
+    std::array<double, 3> num = {0, 0, 0};
+    for (int i = 0; i < n_points(); i++)
+    {
+        error[index_arr[i]] += error_arr[i];
+        num[index_arr[i]] += 1;
+    }
+    spdlog::info("dir 1 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[0].x(), ref_dirs[0].y(), ref_dirs[0].z(), error[0] / num[0]);
+    spdlog::info("dir 2 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[1].x(), ref_dirs[1].y(), ref_dirs[1].z(), error[1] / num[1]);
+    spdlog::info("dir 3 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[2].x(), ref_dirs[2].y(), ref_dirs[2].z(), error[2] / num[2]);
+    //sort
+    std::vector<boost::tuple<Vector_3, double>> sort_err;
+    for (int i = 0; i < 3; i++)
+        sort_err.push_back(boost::make_tuple(ref_dirs[i], error[i] / num[i]));
+    std::sort(sort_err.begin(), sort_err.end(), [](const auto& tuple1, const auto& tuple2) {
+        return boost::get<1>(tuple1) < boost::get<1>(tuple2);
+        });
+    ref_dirs.clear();
+    for (int i = 0; i < 3; i++)
+        ref_dirs.push_back(sort_err[i].get<0>());
+
+    return ref_dirs;
 }
 
 void PointCloud::BilateralNormalSmooth(double sigp, double sign, int itertimes)

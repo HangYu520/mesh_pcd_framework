@@ -384,6 +384,11 @@ int main(int argc, char *argv[])
             std::cin >> min_support;
             pointcloud.DrawRegiongrow(viewer, eta, min_support);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Ref dirs"))
+        {
+            pointcloud.DrawRefDir(viewer);
+        }
 
         ImGui::End();
 
