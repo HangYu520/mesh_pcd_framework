@@ -37,6 +37,7 @@ public:
 	void									DrawBoundingBox(igl::opengl::glfw::Viewer& viewer);
 	void									DrawRegiongrow(igl::opengl::glfw::Viewer& viewer, double eta, int min_support);
 	void									DrawRefDir(igl::opengl::glfw::Viewer& viewer);
+	void									DrawOrthoDir(igl::opengl::glfw::Viewer& viewer);
 	//algo
 	Vector_3								RandomUnitNormal();
 	std::vector<Color>						randomColor(int n_colors); //generate n colors randomly
@@ -61,6 +62,7 @@ public:
 	std::vector<Point_2>					downsample(std::vector<Segment_2>& connect_segments, int sampled_points = 500);
 	std::vector<Primitive>					improved_region_grow(double eta, int min_support); //eta : angle (deg) threshold between original normals
 	std::vector<Vector_3>					reference_direction();
+	std::vector<Vector_3>					orthogonal_direction(const std::vector<Vector_3>& ref_dirs);
 private:
 	Eigen::MatrixXd							GetColors() const;
 };

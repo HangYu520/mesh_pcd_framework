@@ -78,7 +78,10 @@ struct Primitive
 {
 	Point_vector			points;
 	Plane_3					plane;
+	Vector_3				target_normal;
 	Primitive(Point_vector m_points, Plane_3 m_plane)
 		:points(m_points), plane(m_plane)
-	{}
+	{
+		target_normal = Vector_3(0.0, 0.0, 0.0);
+	}
 };

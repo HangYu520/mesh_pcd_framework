@@ -389,6 +389,11 @@ int main(int argc, char *argv[])
         {
             pointcloud.DrawRefDir(viewer);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("Ortho dirs"))
+        {
+            pointcloud.DrawOrthoDir(viewer);
+        }
 
         ImGui::End();
 

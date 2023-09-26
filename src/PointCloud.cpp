@@ -44,6 +44,11 @@ static bool exsist(Vector_3& v, std::vector<Vector_3>& arr)
     return false;
 }
 
+static double dot_vector(const Vector_3& v1, const Vector_3& v2)
+{
+    return v1.x() * v2.x() + v1.y() * v2.y() + v1.z() * v2.z();
+}
+
 template <class OutputIterator>
 void alpha_edges(const Alpha_shape_2& A, OutputIterator out)
 {
@@ -441,6 +446,37 @@ void PointCloud::DrawRefDir(igl::opengl::glfw::Viewer& viewer)
     viewer.data().add_label(P2.row(0), "r1");
     viewer.data().add_label(P2.row(1), "r2");
     viewer.data().add_label(P2.row(2), "r3");
+}
+
+void PointCloud::DrawOrthoDir(igl::opengl::glfw::Viewer& viewer)
+{
+    std::vector<Vector_3> ref_dirs = reference_direction();
+    std::vector<Vector_3> ortho_dirs = orthogonal_direction(ref_dirs);
+    Bbox_3 bbx = BoundingBox();
+    Eigen::MatrixXd P1(3, 3), P2(3, 3), C(3, 3);
+    Point_3 center((bbx.xmin() + bbx.xmax()) / 2,
+        (bbx.ymin() + bbx.ymax()) / 2,
+        (bbx.zmin() + bbx.zmax()) / 2);
+    double x_length = bbx.xmax() - bbx.xmin();
+    double y_length = bbx.ymax() - bbx.ymin();
+    double z_length = bbx.zmax() - bbx.zmin();
+    double L = 0.5 * sqrt(x_length * x_length + y_length * y_length + z_length * z_length);
+    P1.row(0) << center.x(), center.y(), center.z();
+    P1.row(1) = P1.row(0);
+    P1.row(2) = P1.row(0);
+    Point_3 p1 = center + L * ortho_dirs[0];
+    P2.row(0) << p1.x(), p1.y(), p1.z();
+    Point_3 p2 = center + L * ortho_dirs[1];
+    P2.row(1) << p2.x(), p2.y(), p2.z();
+    Point_3 p3 = center + L * ortho_dirs[2];
+    P2.row(2) << p3.x(), p3.y(), p3.z();
+    C << 1, 0, 0,
+        0, 1, 0,
+        0, 0, 1;
+    viewer.data().add_edges(P1, P2, C);
+    viewer.data().add_label(P2.row(0), "r1*");
+    viewer.data().add_label(P2.row(1), "r2*");
+    viewer.data().add_label(P2.row(2), "r3*");
 }
 
 Vector_3 PointCloud::RandomUnitNormal()
@@ -891,9 +927,9 @@ std::vector<Vector_3> PointCloud::reference_direction()
         error[index_arr[i]] += error_arr[i];
         num[index_arr[i]] += 1;
     }
-    spdlog::info("dir 1 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[0].x(), ref_dirs[0].y(), ref_dirs[0].z(), error[0] / num[0]);
-    spdlog::info("dir 2 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[1].x(), ref_dirs[1].y(), ref_dirs[1].z(), error[1] / num[1]);
-    spdlog::info("dir 3 : ({:03.2f},{:03.2f},{:03.2f}) err : {:03.2f}", ref_dirs[2].x(), ref_dirs[2].y(), ref_dirs[2].z(), error[2] / num[2]);
+    spdlog::info("dir 1 : ({:.5f},{:.5f},{:.5f}) err : {:.5f}", ref_dirs[0].x(), ref_dirs[0].y(), ref_dirs[0].z(), error[0] / num[0]);
+    spdlog::info("dir 2 : ({:.5f},{:.5f},{:.5f}) err : {:.5f}", ref_dirs[1].x(), ref_dirs[1].y(), ref_dirs[1].z(), error[1] / num[1]);
+    spdlog::info("dir 3 : ({:.5f},{:.5f},{:.5f}) err : {:.5f}", ref_dirs[2].x(), ref_dirs[2].y(), ref_dirs[2].z(), error[2] / num[2]);
     //sort
     std::vector<boost::tuple<Vector_3, double>> sort_err;
     for (int i = 0; i < 3; i++)
@@ -906,6 +942,25 @@ std::vector<Vector_3> PointCloud::reference_direction()
         ref_dirs.push_back(sort_err[i].get<0>());
 
     return ref_dirs;
+}
+
+std::vector<Vector_3> PointCloud::orthogonal_direction(const std::vector<Vector_3>& ref_dirs)
+{
+    std::vector<Vector_3> ortho_dirs; //return value
+    Vector_3 r1 = ref_dirs[0];
+    Vector_3 r2 = ref_dirs[1];
+    Vector_3 r3 = ref_dirs[2];
+    Vector_3 r1_ = r1;
+    Vector_3 r2_ = r2 - dot_vector(r2, r1_) / dot_vector(r1_, r1_) * r1_;
+    Vector_3 r3_ = r3 - dot_vector(r3, r1_) / dot_vector(r1_, r1_) * r1_ - dot_vector(r3, r2_) / dot_vector(r2_, r2_) * r2_;
+    ortho_dirs.push_back(r1_);
+    ortho_dirs.push_back(r2_);
+    ortho_dirs.push_back(r3_);
+    spdlog::info("ortho dir 1 : ({:.5f},{:.5f},{:.5f})", r1_.x(), r1_.y(), r1_.z());
+    spdlog::info("ortho dir 2 : ({:.5f},{:.5f},{:.5f})", r2_.x(), r2_.y(), r2_.z());
+    spdlog::info("ortho dir 3 : ({:.5f},{:.5f},{:.5f})", r3_.x(), r3_.y(), r3_.z());
+
+    return ortho_dirs;
 }
 
 void PointCloud::BilateralNormalSmooth(double sigp, double sign, int itertimes)
