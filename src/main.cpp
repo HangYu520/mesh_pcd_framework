@@ -367,12 +367,22 @@ int main(int argc, char *argv[])
                 spdlog::info("remove {} points", original_points - new_points);
             Update();
         }
-        if (ImGui::Button("background running"))
+        /*if (ImGui::Button("background running"))
         {
             spdlog::info("Please input the folder path: ");
             std::string folder_path;
             std::cin >> folder_path;
             backgound_running(folder_path);
+        }*/
+        if (ImGui::Button("Region grow"))
+        {
+            spdlog::info("Please input the angle threshold eta (degree):");
+            double eta;
+            std::cin >> eta;
+            spdlog::info("Please input the minimum num of points to form the plane:");
+            int min_support;
+            std::cin >> min_support;
+            pointcloud.DrawRegiongrow(viewer, eta, min_support);
         }
 
         ImGui::End();

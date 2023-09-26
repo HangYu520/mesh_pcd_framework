@@ -21,6 +21,18 @@ static double DegToRad(double degree)
     return degree * PI / 180;
 }
 
+static double angle(const Vector_3& v1, const Vector_3& v2)
+{
+    double dot_product = v1 * v2;
+    double v1_length = std::sqrt(v1.squared_length());
+    double v2_length = std::sqrt(v2.squared_length());
+
+    double cos_angle = dot_product / (v1_length * v2_length);
+    double angle = std::acos(cos_angle);
+
+    return angle;
+}
+
 template <class OutputIterator>
 void alpha_edges(const Alpha_shape_2& A, OutputIterator out)
 {
@@ -356,6 +368,38 @@ void PointCloud::DrawBoundingBox(igl::opengl::glfw::Viewer& viewer)
     viewer.data().add_label(((corners[4] + corners[6]) / 2).row(0), labely.str());
     labelz << bbx.zmax() - bbx.zmin();
     viewer.data().add_label(((corners[4] + corners[5]) / 2).row(0), labelz.str());
+}
+
+void PointCloud::DrawRegiongrow(igl::opengl::glfw::Viewer& viewer, double eta, int min_support)
+{
+    std::vector<Primitive> primitives = improved_region_grow(eta, min_support);
+    std::vector<Color> colors = randomColor(primitives.size());
+    if (Empty())
+        return;
+    viewer.data().clear_points();
+    m_pointset.clear();
+    m_pointset.add_normal_map();
+    std::vector<Color> point_colors;
+    //asign color
+    for (int i = 0; i < primitives.size(); i++)
+    {
+        Primitive primitive = primitives[i];
+        for (int j = 0; j < primitive.points.size(); j++)
+        {
+            Point_3 p = primitive.points[j].get<0>();
+            Vector_3 v = primitive.points[j].get<2>();
+            //Vector_3 v = Vector_3(primitive.plane.a(), primitive.plane.b(), primitive.plane.c());
+            m_pointset.insert(p, v);
+            point_colors.push_back(colors[i]);
+        }
+    }
+    Eigen::MatrixXd P = GetPoints();
+    Eigen::MatrixXd C = GetColors();
+    for (int i = 0; i < point_colors.size(); i++)
+        C.row(i) << point_colors[i][0], point_colors[i][1], point_colors[i][2];
+    viewer.data().set_points(P, C);
+    viewer.data().point_size = 4.0;
+    viewer.core().align_camera_center(P);
 }
 
 Vector_3 PointCloud::RandomUnitNormal()
@@ -700,6 +744,69 @@ std::vector<Segment_2> PointCloud::connect_segments(std::vector<Segment_2>& segm
     }
     spdlog::info("segments connected!");
     return connected_segments;
+}
+
+std::vector<Primitive> PointCloud::improved_region_grow(double eta, int min_support)
+{
+    //m_pointset : input points with optimized normal
+    //min_support : minimum num of points reuired to form a plane
+    std::vector<Primitive> primitives; //return value
+    
+    Eigen::MatrixXd optimized_normals = GetNormals();
+    EstimateNormal(30); // get original normal
+    std::vector<Vector_3> optimizedN, originalN;
+    for (int i = 0; i < n_points(); i++)
+    {
+        optimizedN.push_back(Vector_3(optimized_normals(i, 0), optimized_normals(i, 1), optimized_normals(i, 2)));
+        originalN.push_back(m_pointset.normal(i));
+    }
+    // region grow
+    std::unordered_set<int> remainPoints;
+    int Npoints = n_points();
+    for (int i = 0; i < Npoints; i++)
+        remainPoints.insert(i);
+    buildKDTree(); // build kdtree for search neighbors
+    spdlog::info("start improved region growing...");
+    Timer timer;
+    timer.start();
+    while (remainPoints.size() > min_support)
+    {
+        Point_vector points;
+        std::vector<Point_3> fit_points;
+        int start_id = *(remainPoints.begin());
+        points.push_back(boost::make_tuple(m_pointset.point(start_id), originalN[start_id], optimizedN[start_id], start_id));
+        fit_points.push_back(m_pointset.point(start_id));
+        remainPoints.erase(start_id);
+        int iter = 0;
+        while (iter < points.size())
+        {
+            PNNI point = points[iter];
+            std::vector<int> neighbors = K_Neighbors(point.get<3>(), 10);
+            for (int n_id : neighbors)
+            {
+                if (remainPoints.find(n_id) == remainPoints.end())
+                    continue;
+                if (optimizedN[n_id] == point.get<2>() && angle(originalN[n_id], point.get<1>()) < DegToRad(eta))
+                {
+                    points.push_back(boost::make_tuple(m_pointset.point(n_id), originalN[n_id], optimizedN[n_id], n_id));
+                    fit_points.push_back(m_pointset.point(n_id));
+                    remainPoints.erase(n_id);
+                }
+            }
+            iter++;
+        }
+        if (points.size() > min_support)
+        {
+            //fit a plane for the points
+            Plane_3 plane;
+            CGAL::linear_least_squares_fitting_3(fit_points.begin(), fit_points.end(), plane, CGAL::Dimension_tag<0>());
+            primitives.push_back(Primitive(points, plane));
+        }
+    }
+    spdlog::info("Done. Time : {} s.", timer.time());
+    spdlog::info("Extract {} planar primitives.", primitives.size());
+    
+    return primitives;
 }
 
 void PointCloud::BilateralNormalSmooth(double sigp, double sign, int itertimes)
