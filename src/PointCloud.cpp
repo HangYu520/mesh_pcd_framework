@@ -537,14 +537,19 @@ void PointCloud::DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon)
     double x_length = bbx.xmax() - bbx.xmin();
     double y_length = bbx.ymax() - bbx.ymin();
     double z_length = bbx.zmax() - bbx.zmin();
-    double L = 0.2 * sqrt(x_length * x_length + y_length * y_length + z_length * z_length);
+    double L = 0.1 * sqrt(x_length * x_length + y_length * y_length + z_length * z_length);
     std::vector<Point_3> starts, ends;
+    std::vector<Vector_3> normals;
     for (Primitive primitive : m_primitives)
     {
-        if (!exsist(primitive.target_normal, ortho_dirs))
+        if (primitive.target_normal != Vector_3(0.0, 0.0,0.0) && !exsist(primitive.target_normal, ortho_dirs))
         {
             starts.push_back(primitive.points[0].get<0>());
-            ends.push_back(primitive.points[0].get<0>() + L * primitive.target_normal);
+            Vector_3 n = primitive.target_normal;
+            if (angle(primitive.points[0].get<1>(), primitive.target_normal, false) > PI / 2)
+                n = -1 * n;
+            ends.push_back(primitive.points[0].get<0>() + L * n);
+            normals.push_back(primitive.target_normal);
         }
     }
     Eigen::MatrixXd P1(starts.size(), 3), P2(ends.size(), 3), C(starts.size(), 3);
@@ -553,9 +558,46 @@ void PointCloud::DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon)
         P1.row(i) << starts[i][0], starts[i][1], starts[i][2];
         P2.row(i) << ends[i][0], ends[i][1], ends[i][2];
         C.row(i) << 0, 0, 0;
+        std::stringstream ss;
+        ss << "(" << normals[i][0] << "," << normals[i][1] << "," << normals[i][2] << ")";
+        viewer.data().add_label(P2.row(i), ss.str());
     }
     viewer.data().add_edges(P1, P2, C);
 }
+
+void PointCloud::DrawCoplanar(igl::opengl::glfw::Viewer& viewer, double delta)
+{
+    //required : already running DrawRegiongrow
+    set_coplanar(m_primitives, delta);
+    std::vector<Color> colors = randomColor(m_primitives.size());
+    if (Empty())
+        return;
+    viewer.data().clear_points();
+    m_pointset.clear();
+    m_pointset.add_normal_map();
+    std::vector<Color> point_colors;
+    //asign color
+    for (int i = 0; i < m_primitives.size(); i++)
+    {
+        Primitive primitive = m_primitives[i];
+        for (int j = 0; j < primitive.points.size(); j++)
+        {
+            Point_3 p = primitive.points[j].get<0>();
+            Vector_3 v = primitive.points[j].get<2>();
+            //Vector_3 v = Vector_3(primitive.plane.a(), primitive.plane.b(), primitive.plane.c());
+            m_pointset.insert(p, v);
+            point_colors.push_back(colors[i]);
+        }
+    }
+    Eigen::MatrixXd P = GetPoints();
+    Eigen::MatrixXd C = GetColors();
+    for (int i = 0; i < point_colors.size(); i++)
+        C.row(i) << point_colors[i][0], point_colors[i][1], point_colors[i][2];
+    viewer.data().set_points(P, C);
+    viewer.data().point_size = 4.0;
+    viewer.core().align_camera_center(P);
+}
+
 
 Vector_3 PointCloud::RandomUnitNormal()
 {
@@ -1145,6 +1187,7 @@ void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Ve
                 if (primitives_set[idx_set[i]].get<0>().transformed_normal[1] < 0)
                     y_sign = -1.0;
                 primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_avg, y_sign * y_abs, z_avg));
+                primitives_set[idx_set[i]].get<0>().set_target_normal(Vector_3(x_avg, y_sign * y_abs, z_avg));
             }
         }
     }
@@ -1199,7 +1242,8 @@ void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Ve
                 double x_sign = 1.0;
                 if (primitives_set[idx_set[i]].get<0>().transformed_normal[0] < 0)
                     x_sign = -1.0;
-                primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_sign * x_abs, y_avg, z_avg));
+                primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_sign* x_abs, y_avg, z_avg));
+                primitives_set[idx_set[i]].get<0>().set_target_normal(Vector_3(x_sign * x_abs, y_avg, z_avg));
             }
         }
     }
@@ -1255,6 +1299,7 @@ void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Ve
                 if (primitives_set[idx_set[i]].get<0>().transformed_normal[2] < 0)
                     z_sign = -1.0;
                 primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_avg, y_avg, z_sign* z_abs));
+                primitives_set[idx_set[i]].get<0>().set_target_normal(Vector_3(x_avg, y_avg, z_sign* z_abs));
             }
         }
     }
@@ -1267,7 +1312,9 @@ void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Ve
         Eigen::Vector3d n;
         n << normal[0], normal[1], normal[2];
         Eigen::Vector3d tn = C * n;
-        primitives_set[i].get<0>().set_target_normal(Vector_3(tn(0), tn(1), tn(2)));
+        primitives_set[i].get<0>().set_transformed_normal(Vector_3(tn(0), tn(1), tn(2)));
+        if (primitives_set[i].get<0>().target_normal != Vector_3(0.0, 0.0, 0.0))
+            primitives_set[i].get<0>().set_target_normal(primitives_set[i].get<0>().transformed_normal);
     }
     //change the value in the input primitives
     for (int i = 0; i < primitives_set.size(); i++)
@@ -1275,4 +1322,67 @@ void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Ve
         primitives[primitives_set[i].get<1>()].set_target_normal(primitives_set[i].get<0>().target_normal);
     }
     spdlog::info("{} primitives are set symmetry", primitives_set.size() - remainPrimitives.size());
+}
+
+void PointCloud::set_coplanar(std::vector<Primitive>& primitives, double delta)
+{
+    //requirements : set_parallel and set_symmetry already
+    std::vector<Primitive> mergedPrimitives;
+    std::unordered_set<int> remainPrimitives;
+    for (int i = 0; i < primitives.size(); i++)
+        remainPrimitives.insert(i);
+    for (int i = 0; i < primitives.size(); i++)
+    {
+        if (remainPrimitives.find(i) == remainPrimitives.end() || primitives[i].target_normal == Vector_3(0.0, 0.0, 0.0))
+            continue;
+        std::vector<Primitive> merge_prim;
+        std::vector<int> merge_id;
+        merge_prim.push_back(primitives[i]);
+        merge_id.push_back(i);
+        for (int j = 0; j < primitives.size(); j++)
+        {
+            if (j == i || remainPrimitives.find(j) == remainPrimitives.end() || primitives[j].target_normal == Vector_3(0.0, 0.0, 0.0))
+                continue;
+            bool ispara = primitives[i].target_normal == primitives[j].target_normal;
+            bool isnear = abs(primitives[i].plane.d() - primitives[j].plane.d()) < delta;
+            if (ispara && isnear)
+            {
+                merge_prim.push_back(primitives[j]);
+                merge_id.push_back(j);
+            }
+        }
+        if (merge_id.size() > 1)
+        {
+            Primitive mergePrim = merge_primives(merge_prim);
+            mergedPrimitives.push_back(mergePrim);
+            for (int i = 0; i < merge_id.size(); i++)
+                remainPrimitives.erase(merge_id[i]);
+        }
+    }
+    //add remainPrimitives
+    for (int i : remainPrimitives)
+        mergedPrimitives.push_back(primitives[i]);
+    spdlog::info("{} primitives merged, remain {} primitives", primitives.size() - remainPrimitives.size(), mergedPrimitives.size());
+    //change the input primitives
+    primitives.clear();
+    for (Primitive prim : mergedPrimitives)
+        primitives.push_back(prim);
+}
+
+Primitive PointCloud::merge_primives(const std::vector<Primitive>& primitives)
+{
+    Point_vector mergepoints;
+    std::vector<Point_3> fit_points;
+    for (Primitive prim : primitives)
+        for (PNNI pnni : prim.points)
+        {
+            mergepoints.push_back(pnni);
+            fit_points.push_back(pnni.get<0>());
+        }
+    Plane_3 plane;
+    CGAL::linear_least_squares_fitting_3(fit_points.begin(), fit_points.end(), plane, CGAL::Dimension_tag<0>());
+    Primitive mergedPrimitive(mergepoints, plane);
+    mergedPrimitive.set_target_normal(primitives[0].target_normal);
+    
+    return mergedPrimitive;
 }

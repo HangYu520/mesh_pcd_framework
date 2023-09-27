@@ -41,6 +41,7 @@ public:
 	void									DrawOrthoDir(igl::opengl::glfw::Viewer& viewer);
 	void									DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau);
 	void									DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon);
+	void									DrawCoplanar(igl::opengl::glfw::Viewer& viewer, double delta);
 	//algo
 	Vector_3								RandomUnitNormal();
 	std::vector<Color>						randomColor(int n_colors); //generate n colors randomly
@@ -67,6 +68,8 @@ public:
 	std::vector<Vector_3>					orthogonal_direction(const std::vector<Vector_3>& ref_dirs);
 	void									set_parallel(std::vector<Primitive>& primitives, std::vector<Vector_3>& ref_dirs, std::vector<Vector_3>& ortho_dirs, double tau); //tau: angle (deg) threshold between face normals
 	void									set_symmetry(std::vector<Primitive>& primitives, std::vector<Vector_3>& ortho_dirs, double epsilon); //epsilon : threshold to detect symmetry
+	void									set_coplanar(std::vector<Primitive>& primitives, double delta); // delta : distance threshold to detect coplanar
+	Primitive								merge_primives(const std::vector<Primitive>& primitives); //return the merged primitive
 private:
 	Eigen::MatrixXd							GetColors() const;
 };
