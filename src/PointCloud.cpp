@@ -21,14 +21,18 @@ static double DegToRad(double degree)
     return degree * PI / 180;
 }
 
-static double angle(const Vector_3& v1, const Vector_3& v2)
+static double angle(const Vector_3& v1, const Vector_3& v2, bool nodirection)
 {
+    //if nodirection : angle range from [0,90], else [0,180]
     double dot_product = v1 * v2;
     double v1_length = std::sqrt(v1.squared_length());
     double v2_length = std::sqrt(v2.squared_length());
 
     double cos_angle = dot_product / (v1_length * v2_length);
     double angle = std::acos(cos_angle);
+
+    if (nodirection && angle > PI / 2)
+        angle = PI - angle;
 
     return angle;
 }
@@ -238,8 +242,8 @@ void PointCloud::Draw(igl::opengl::glfw::Viewer& viewer) const
 
 void PointCloud::DrawNormal(igl::opengl::glfw::Viewer& viewer)
 {
-    if(!m_pointset.has_normal_map())
-        EstimateNormal();
+    if (m_pointset.normals().empty())
+        EstimateNormal(30);
     double ratio = AverageSpacing();
     Eigen::MatrixXd P = GetPoints();
     Eigen::MatrixXd N = GetNormals();
@@ -477,6 +481,47 @@ void PointCloud::DrawOrthoDir(igl::opengl::glfw::Viewer& viewer)
     viewer.data().add_label(P2.row(0), "r1*");
     viewer.data().add_label(P2.row(1), "r2*");
     viewer.data().add_label(P2.row(2), "r3*");
+}
+
+void PointCloud::DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau)
+{
+    //required : already running DrawRegiongrow
+    std::vector<Vector_3> ref_dirs = reference_direction();
+    std::vector<Vector_3> ortho_dirs = orthogonal_direction(ref_dirs);
+    set_parallel(m_primitives, ref_dirs, ortho_dirs, tau);
+    if (Empty())
+        return;
+    viewer.data().clear_points();
+    m_pointset.clear();
+    m_pointset.add_normal_map();
+    std::vector<Color> point_colors;
+    //asign color
+    for (int i = 0; i < m_primitives.size(); i++)
+    {
+        Primitive primitive = m_primitives[i];
+        for (int j = 0; j < primitive.points.size(); j++)
+        {
+            Point_3 p = primitive.points[j].get<0>();
+            Vector_3 v = primitive.points[j].get<2>();
+            //Vector_3 v = Vector_3(primitive.plane.a(), primitive.plane.b(), primitive.plane.c());
+            m_pointset.insert(p, v);
+            if (primitive.target_normal == ortho_dirs[0])
+                point_colors.push_back(Color{ 1.0, 0.0, 0.0 });
+            else if (primitive.target_normal == ortho_dirs[1])
+                point_colors.push_back(Color{ 0.0, 1.0, 0.0 });
+            else if (primitive.target_normal == ortho_dirs[2])
+                point_colors.push_back(Color{ 0.0, 0.0, 1.0 });
+            else if (primitive.target_normal == Vector_3(0.0, 0.0, 0.0))
+                point_colors.push_back(Color{ 0.0, 0.0, 0.0 });
+        }
+    }
+    Eigen::MatrixXd P = GetPoints();
+    Eigen::MatrixXd C = GetColors();
+    for (int i = 0; i < point_colors.size(); i++)
+        C.row(i) << point_colors[i][0], point_colors[i][1], point_colors[i][2];
+    viewer.data().set_points(P, C);
+    viewer.data().point_size = 4.0;
+    viewer.core().align_camera_center(P);
 }
 
 Vector_3 PointCloud::RandomUnitNormal()
@@ -863,7 +908,7 @@ std::vector<Primitive> PointCloud::improved_region_grow(double eta, int min_supp
             {
                 if (remainPoints.find(n_id) == remainPoints.end())
                     continue;
-                if (optimizedN[n_id] == point.get<2>() && angle(originalN[n_id], point.get<1>()) < DegToRad(eta))
+                if (optimizedN[n_id] == point.get<2>() && angle(originalN[n_id], point.get<1>(), true) < DegToRad(eta))
                 {
                     points.push_back(boost::make_tuple(m_pointset.point(n_id), originalN[n_id], optimizedN[n_id], n_id));
                     fit_points.push_back(m_pointset.point(n_id));
@@ -882,6 +927,11 @@ std::vector<Primitive> PointCloud::improved_region_grow(double eta, int min_supp
     }
     spdlog::info("Done. Time : {} s.", timer.time());
     spdlog::info("Extract {} planar primitives.", primitives.size());
+
+    //save primitives to m_primitives for backup
+    m_primitives.clear();
+    for (auto primitive : primitives)
+        m_primitives.push_back(primitive);
     
     return primitives;
 }
@@ -905,6 +955,7 @@ std::vector<Vector_3> PointCloud::reference_direction()
         original_normals.push_back(m_pointset.normal(i));
         m_pointset.normal(i) = optimized_normals[i];
     }
+    //comp
     //compute error
     std::vector<int> index_arr;
     std::vector<double> error_arr;
@@ -961,6 +1012,24 @@ std::vector<Vector_3> PointCloud::orthogonal_direction(const std::vector<Vector_
     spdlog::info("ortho dir 3 : ({:.5f},{:.5f},{:.5f})", r3_.x(), r3_.y(), r3_.z());
 
     return ortho_dirs;
+}
+
+void PointCloud::set_parallel(std::vector<Primitive>& primitives, std::vector<Vector_3>& ref_dirs, std::vector<Vector_3>& ortho_dirs, double tau)
+{
+    int count = 0;
+    for (Primitive& primitive : primitives)
+    {
+        for (int i = 0; i < ref_dirs.size(); i++)
+        {
+            if (angle(ref_dirs[i], primitive.plane.orthogonal_vector(), true) < DegToRad(tau))
+            {
+                primitive.set_target_normal(ortho_dirs[i]);
+                count++;
+                break;
+            }
+        }
+    }
+    spdlog::info("{} primitives are set parallel and perpendicular const.", count);
 }
 
 void PointCloud::BilateralNormalSmooth(double sigp, double sign, int itertimes)

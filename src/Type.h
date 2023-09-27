@@ -84,4 +84,8 @@ struct Primitive
 	{
 		target_normal = Vector_3(0.0, 0.0, 0.0);
 	}
+	void set_target_normal(Vector_3 normal)
+	{
+		target_normal += normal;
+	}
 };

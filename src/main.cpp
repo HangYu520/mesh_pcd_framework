@@ -394,6 +394,13 @@ int main(int argc, char *argv[])
         {
             pointcloud.DrawOrthoDir(viewer);
         }
+        if (ImGui::Button("para & perp"))
+        {
+            spdlog::info("Please input the angle threshold tau (degree):");
+            double tau;
+            std::cin >> tau;
+            pointcloud.DrawPrallel(viewer, tau);
+        }
 
         ImGui::End();
 
