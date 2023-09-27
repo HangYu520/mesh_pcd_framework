@@ -40,6 +40,7 @@ public:
 	void									DrawRefDir(igl::opengl::glfw::Viewer& viewer);
 	void									DrawOrthoDir(igl::opengl::glfw::Viewer& viewer);
 	void									DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau);
+	void									DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon);
 	//algo
 	Vector_3								RandomUnitNormal();
 	std::vector<Color>						randomColor(int n_colors); //generate n colors randomly
@@ -52,7 +53,6 @@ public:
 	void									buildKDTree();
 	std::vector<int>						K_Neighbors(int query_ind, int k); //search the k nearest neighbors
 	std::vector<int>						K_Neighbors(Point_3 query, int k);
-	void									BilateralNormalSmooth(double sigp, double sign, int itertimes);
 	Bbox_3									BoundingBox(); //return bounding box
 	void									Project_along_x(); //x-components of points are set to 0
 	void									Project_along_y(); //y-components of points are set to 0
@@ -66,6 +66,7 @@ public:
 	std::vector<Vector_3>					reference_direction();
 	std::vector<Vector_3>					orthogonal_direction(const std::vector<Vector_3>& ref_dirs);
 	void									set_parallel(std::vector<Primitive>& primitives, std::vector<Vector_3>& ref_dirs, std::vector<Vector_3>& ortho_dirs, double tau); //tau: angle (deg) threshold between face normals
+	void									set_symmetry(std::vector<Primitive>& primitives, std::vector<Vector_3>& ortho_dirs, double epsilon); //epsilon : threshold to detect symmetry
 private:
 	Eigen::MatrixXd							GetColors() const;
 };

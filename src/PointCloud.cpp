@@ -512,7 +512,7 @@ void PointCloud::DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau)
             else if (primitive.target_normal == ortho_dirs[2])
                 point_colors.push_back(Color{ 0.0, 0.0, 1.0 });
             else if (primitive.target_normal == Vector_3(0.0, 0.0, 0.0))
-                point_colors.push_back(Color{ 0.0, 0.0, 0.0 });
+                point_colors.push_back(Color{ 0.33, 0.66, 1.0 });
         }
     }
     Eigen::MatrixXd P = GetPoints();
@@ -522,6 +522,39 @@ void PointCloud::DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau)
     viewer.data().set_points(P, C);
     viewer.data().point_size = 4.0;
     viewer.core().align_camera_center(P);
+}
+
+void PointCloud::DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon)
+{
+    //required : already running DrawRegiongrow and setparallel
+    std::vector<Vector_3> ref_dirs = reference_direction();
+    std::vector<Vector_3> ortho_dirs = orthogonal_direction(ref_dirs);
+    set_symmetry(m_primitives, ortho_dirs, epsilon);
+    Bbox_3 bbx = BoundingBox();
+    Point_3 center((bbx.xmin() + bbx.xmax()) / 2,
+        (bbx.ymin() + bbx.ymax()) / 2,
+        (bbx.zmin() + bbx.zmax()) / 2);
+    double x_length = bbx.xmax() - bbx.xmin();
+    double y_length = bbx.ymax() - bbx.ymin();
+    double z_length = bbx.zmax() - bbx.zmin();
+    double L = 0.2 * sqrt(x_length * x_length + y_length * y_length + z_length * z_length);
+    std::vector<Point_3> starts, ends;
+    for (Primitive primitive : m_primitives)
+    {
+        if (!exsist(primitive.target_normal, ortho_dirs))
+        {
+            starts.push_back(primitive.points[0].get<0>());
+            ends.push_back(primitive.points[0].get<0>() + L * primitive.target_normal);
+        }
+    }
+    Eigen::MatrixXd P1(starts.size(), 3), P2(ends.size(), 3), C(starts.size(), 3);
+    for (int i = 0; i < starts.size(); i++)
+    {
+        P1.row(i) << starts[i][0], starts[i][1], starts[i][2];
+        P2.row(i) << ends[i][0], ends[i][1], ends[i][2];
+        C.row(i) << 0, 0, 0;
+    }
+    viewer.data().add_edges(P1, P2, C);
 }
 
 Vector_3 PointCloud::RandomUnitNormal()
@@ -1032,54 +1065,214 @@ void PointCloud::set_parallel(std::vector<Primitive>& primitives, std::vector<Ve
     spdlog::info("{} primitives are set parallel and perpendicular const.", count);
 }
 
-void PointCloud::BilateralNormalSmooth(double sigp, double sign, int itertimes)
+void PointCloud::set_symmetry(std::vector<Primitive>& primitives, std::vector<Vector_3>& ortho_dirs, double epsilon)
 {
-    //bilateral normal smoothing
-    /*
-    * sigp: gauss sigma parameter of position term
-    * sign: gauss sigma parameter of normal term
-    * itertimes£º time of iterations
-    */
-    std::cout << "Bilateral Normal Smoothing. " <<
-        "sigp: " << sigp << " sign: " << sign << " itertimes: " << itertimes << std::endl;
-    if (!m_pointset.has_normal_map())
-        EstimateNormal();
-    int n = n_points();
-    int ITER = itertimes;
-    while (itertimes > 0)
+    // reqirements : parallel and perpendicular const. are set already
+    std::vector<boost::tuple<Primitive, int>> primitives_set; // int : the idx in the input primitives
+    for (int i = 0; i < primitives.size(); i++)
+        if (primitives[i].target_normal == Vector_3(0.0, 0.0, 0.0))
+            primitives_set.push_back(boost::make_tuple(primitives[i], i));
+    spdlog::info("search symmetry in {} primitives", primitives_set.size());
+    std::unordered_set<int> remainPrimitives;
+    for (int i = 0; i < primitives_set.size(); i++)
+        remainPrimitives.insert(i);
+    Vector_3 or1 = ortho_dirs[0];
+    Vector_3 or2 = ortho_dirs[1];
+    Vector_3 or3 = ortho_dirs[2];
+    Eigen::Matrix3d C;
+    C << or1[0], or2[0], or3[0],
+        or1[1], or2[1], or3[1],
+        or1[2], or2[2], or3[2];
+    //transform the normal of the plane in the primitives_set
+    spdlog::info("transform normal of the plane");
+    for (int i = 0; i < primitives_set.size(); i++)
     {
-        std::cout << "iter" << ITER - itertimes << std::endl;
-        Eigen::MatrixXd N_new = Eigen::MatrixXd::Zero(n, 3);
-        //#pragma omp parallel for num_threads(2)
-        for (int i = 0; i < n; i++)
-        {
-            double sum = 0;
-            std::vector<int> neighbors = K_Neighbors(i, 10); //k neighbors of point[i]
-            for (int j : neighbors)
-            {
-                //position term
-                double sdis = CGAL::squared_distance(Point(i), Point(j));
-                double pterm = GaussFunc(sqrt(sdis), sigp);
-                //normal term
-                double nproduct = CGAL::scalar_product(Normal(i), Normal(j));
-                double nterm = GaussFunc(1 - nproduct, 1 - cos(DegToRad(sign)));
-                N_new(i, 0) += pterm * nterm * Normal(j).x();
-                N_new(i, 1) += pterm * nterm * Normal(j).y();
-                N_new(i, 2) += pterm * nterm * Normal(j).z();
-                sum += pterm * nterm;
-            }
-            N_new(i, 0) /= sum;
-            N_new(i, 1) /= sum;
-            N_new(i, 2) /= sum;
-        }
-        //update normal with the N_new
-        for (int i = 0; i < n; i++)
-        {
-            Vector_3 v(N_new(i, 0), N_new(i, 1), N_new(i, 2));
-            m_pointset.normal(i) = v;
-        }
-
-        itertimes--;
+        Vector_3 normal = primitives_set[i].get<0>().plane.orthogonal_vector();
+        Eigen::Vector3d n;
+        n << normal[0], normal[1], normal[2];
+        Eigen::Matrix3d C_ = C.inverse();
+        Eigen::Vector3d tn = C_ * n;
+        primitives_set[i].get<0>().set_transformed_normal(Vector_3(tn(0), tn(1), tn(2)));
     }
-    std::cout << "Done" << std::endl;
+    //detect symmetry in three directions
+    //r1*-o-r3*
+    spdlog::info("search symmetry about r1Or3");
+    for (int i = 0; i < primitives_set.size(); i++)
+    {
+        if (remainPrimitives.find(i) == remainPrimitives.end())
+            continue;
+        std::vector<Vector_3> normal_set;
+        std::vector<int> idx_set;
+        Vector_3 ni = primitives_set[i].get<0>().transformed_normal;
+        normal_set.push_back(ni);
+        idx_set.push_back(i);
+        for (int j = 0; j < primitives_set.size(); j++)
+        {
+            if (j == i || remainPrimitives.find(j) == remainPrimitives.end())
+                continue;
+            Vector_3 nj = primitives_set[j].get<0>().transformed_normal;
+            bool ispara = abs(ni[0] - nj[0]) < epsilon && abs(ni[1] - nj[1]) < epsilon && abs(ni[2] - nj[2]) < epsilon;
+            bool issymm = abs(ni[0] - nj[0]) < epsilon && (ni[1] + nj[1]) < epsilon && abs(ni[2] - nj[2]) < epsilon;
+            if (ispara || issymm)
+            {
+                normal_set.push_back(nj);
+                idx_set.push_back(j);
+            }
+        }
+        //avarage normal update
+        //x,z : avg, y : max and min
+        if (normal_set.size() > 1)
+        {
+            double x_avg = 0.0;
+            double z_avg = 0.0;
+            double y_max = std::numeric_limits<double>::min();
+            double y_min = std::numeric_limits<double>::max();
+            for (int i = 0; i < normal_set.size(); i++)
+            {
+                x_avg += normal_set[i][0];
+                z_avg += normal_set[i][2];
+                y_max = std::max(y_max, normal_set[i][1]);
+                y_min = std::min(y_min, normal_set[i][1]);
+                remainPrimitives.erase(idx_set[i]);
+            }
+            x_avg /= normal_set.size();
+            z_avg /= normal_set.size();
+            double y_abs = (y_max - y_min) / 2;
+            //update
+            for (int i = 0; i < idx_set.size(); i++)
+            {
+                double y_sign = 1.0;
+                if (primitives_set[idx_set[i]].get<0>().transformed_normal[1] < 0)
+                    y_sign = -1.0;
+                primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_avg, y_sign * y_abs, z_avg));
+            }
+        }
+    }
+    int remain = remainPrimitives.size();
+    spdlog::info("{} primitves are set r1Or3 symm", primitives_set.size() - remainPrimitives.size());
+    //r2*-o-r3*
+    spdlog::info("search symmetry about r2Or3");
+    for (int i = 0; i < primitives_set.size(); i++)
+    {
+        if (remainPrimitives.find(i) == remainPrimitives.end())
+            continue;
+        std::vector<Vector_3> normal_set;
+        std::vector<int> idx_set;
+        Vector_3 ni = primitives_set[i].get<0>().transformed_normal;
+        normal_set.push_back(ni);
+        idx_set.push_back(i);
+        for (int j = 0; j < primitives_set.size(); j++)
+        {
+            if (j == i || remainPrimitives.find(j) == remainPrimitives.end())
+                continue;
+            Vector_3 nj = primitives_set[j].get<0>().transformed_normal;
+            bool ispara = abs(ni[0] - nj[0]) < epsilon && abs(ni[1] - nj[1]) < epsilon && abs(ni[2] - nj[2]) < epsilon;
+            bool issymm = (ni[0] + nj[0]) < epsilon && abs(ni[1] - nj[1]) < epsilon && abs(ni[2] - nj[2]) < epsilon;
+            if (ispara || issymm)
+            {
+                normal_set.push_back(nj);
+                idx_set.push_back(j);
+            }
+        }
+        //avarage normal update
+        //y,z : avg, x : max and min
+        if (normal_set.size() > 1)
+        {
+            double y_avg = 0.0;
+            double z_avg = 0.0;
+            double x_max = std::numeric_limits<double>::min();
+            double x_min = std::numeric_limits<double>::max();
+            for (int i = 0; i < normal_set.size(); i++)
+            {
+                y_avg += normal_set[i][1];
+                z_avg += normal_set[i][2];
+                x_max = std::max(x_max, normal_set[i][0]);
+                x_min = std::min(x_min, normal_set[i][0]);
+                remainPrimitives.erase(idx_set[i]);
+            }
+            y_avg /= normal_set.size();
+            z_avg /= normal_set.size();
+            double x_abs = (x_max - x_min) / 2;
+            //update
+            for (int i = 0; i < idx_set.size(); i++)
+            {
+                double x_sign = 1.0;
+                if (primitives_set[idx_set[i]].get<0>().transformed_normal[0] < 0)
+                    x_sign = -1.0;
+                primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_sign * x_abs, y_avg, z_avg));
+            }
+        }
+    }
+    spdlog::info("{} primitves are set r2Or3 symm", remain - remainPrimitives.size());
+    remain = remainPrimitives.size();
+    //r2*-o-r3*
+    spdlog::info("search symmetry about r1Or2");
+    for (int i = 0; i < primitives_set.size(); i++)
+    {
+        if (remainPrimitives.find(i) == remainPrimitives.end())
+            continue;
+        std::vector<Vector_3> normal_set;
+        std::vector<int> idx_set;
+        Vector_3 ni = primitives_set[i].get<0>().transformed_normal;
+        normal_set.push_back(ni);
+        idx_set.push_back(i);
+        for (int j = 0; j < primitives_set.size(); j++)
+        {
+            if (j == i || remainPrimitives.find(j) == remainPrimitives.end())
+                continue;
+            Vector_3 nj = primitives_set[j].get<0>().transformed_normal;
+            bool ispara = abs(ni[0] - nj[0]) < epsilon && abs(ni[1] - nj[1]) < epsilon && abs(ni[2] - nj[2]) < epsilon;
+            bool issymm = abs(ni[0] - nj[0]) < epsilon && abs(ni[1] - nj[1]) < epsilon && (ni[2] + nj[2]) < epsilon;
+            if (ispara || issymm)
+            {
+                normal_set.push_back(nj);
+                idx_set.push_back(j);
+            }
+        }
+        //avarage normal update
+        //x,y : avg, z : max and min
+        if (normal_set.size() > 1)
+        {
+            double x_avg = 0.0;
+            double y_avg = 0.0;
+            double z_max = std::numeric_limits<double>::min();
+            double z_min = std::numeric_limits<double>::max();
+            for (int i = 0; i < normal_set.size(); i++)
+            {
+                x_avg += normal_set[i][0];
+                y_avg += normal_set[i][1];
+                z_max = std::max(z_max, normal_set[i][2]);
+                z_min = std::min(z_min, normal_set[i][2]);
+                remainPrimitives.erase(idx_set[i]);
+            }
+            x_avg /= normal_set.size();
+            y_avg /= normal_set.size();
+            double z_abs = (z_max - z_min) / 2;
+            //update
+            for (int i = 0; i < idx_set.size(); i++)
+            {
+                double z_sign = 1.0;
+                if (primitives_set[idx_set[i]].get<0>().transformed_normal[2] < 0)
+                    z_sign = -1.0;
+                primitives_set[idx_set[i]].get<0>().set_transformed_normal(Vector_3(x_avg, y_avg, z_sign* z_abs));
+            }
+        }
+    }
+    spdlog::info("{} primitves are set r1Or2 symm", remain - remainPrimitives.size());
+    //transform back
+    spdlog::info("transform normal of the plane back");
+    for (int i = 0; i < primitives_set.size(); i++)
+    {
+        Vector_3 normal = primitives_set[i].get<0>().transformed_normal;
+        Eigen::Vector3d n;
+        n << normal[0], normal[1], normal[2];
+        Eigen::Vector3d tn = C * n;
+        primitives_set[i].get<0>().set_target_normal(Vector_3(tn(0), tn(1), tn(2)));
+    }
+    //change the value in the input primitives
+    for (int i = 0; i < primitives_set.size(); i++)
+    {
+        primitives[primitives_set[i].get<1>()].set_target_normal(primitives_set[i].get<0>().target_normal);
+    }
+    spdlog::info("{} primitives are set symmetry", primitives_set.size() - remainPrimitives.size());
 }

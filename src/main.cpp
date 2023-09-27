@@ -401,7 +401,14 @@ int main(int argc, char *argv[])
             std::cin >> tau;
             pointcloud.DrawPrallel(viewer, tau);
         }
-
+        ImGui::SameLine();
+        if (ImGui::Button("symm"))
+        {
+            spdlog::info("Please input the threshold epsilon:");
+            double epsilon;
+            std::cin >> epsilon;
+            pointcloud.DrawSymm(viewer, epsilon);
+        }
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width, 0), ImGuiCond_FirstUseEver);

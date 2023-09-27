@@ -20,6 +20,7 @@
 #include <boost/iterator/zip_iterator.hpp>
 #include <boost/random.hpp>
 #include <utility>
+#include <limits>
 #include "spdlog/spdlog.h"
 
 
@@ -79,13 +80,21 @@ struct Primitive
 	Point_vector			points;
 	Plane_3					plane;
 	Vector_3				target_normal;
+	Vector_3				transformed_normal;
 	Primitive(Point_vector m_points, Plane_3 m_plane)
 		:points(m_points), plane(m_plane)
 	{
 		target_normal = Vector_3(0.0, 0.0, 0.0);
+		transformed_normal = Vector_3(0.0, 0.0, 0.0);
 	}
 	void set_target_normal(Vector_3 normal)
 	{
+		target_normal -= target_normal;
 		target_normal += normal;
+	}
+	void set_transformed_normal(Vector_3 normal)
+	{
+		transformed_normal -= transformed_normal;
+		transformed_normal += normal;
 	}
 };
