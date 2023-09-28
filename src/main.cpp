@@ -12,6 +12,14 @@
 #include "TriMesh.h"
 #include "PointCloud.h"
 
+double myvfunc(const std::vector<double>& x, std::vector<double>& grad, void* my_func_data)
+{
+    if (!grad.empty()) {
+        grad[0] = 2 * x[0];
+    }
+    return x[0] * x[0];
+}
+
 void ScreenShot(igl::opengl::glfw::Viewer& viewer, const std::string& save_path = "res/screenshot.png", int image_width = 1920, int image_height = 1080)
 {
     // Allocate temporary buffers for image
@@ -196,7 +204,7 @@ int main(int argc, char *argv[])
     viewer.data().label_size = 2.f;
     viewer.data().line_width = 2.f;
     float pcd_window_width = 220;
-    float pcd_window_height = 280;
+    float pcd_window_height = 320;
     float mesh_window_width = 220;
     float mesh_window_height = 130;
     float screenshot_window_width = 220;
@@ -234,6 +242,13 @@ int main(int argc, char *argv[])
         if (ImGui::Button("Save"))
         {
             pointcloud.WriteXYZ("res/pcd/save/save.xyz");
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("reset"))
+        {
+            pointcloud.clear();
+            ReadFile();
+            Update();
         }
         if (ImGui::Button("AverageSpacing"))
         {
@@ -416,6 +431,23 @@ int main(int argc, char *argv[])
             double delta;
             std::cin >> delta;
             pointcloud.DrawCoplanar(viewer, delta);
+        }
+        if (ImGui::Button("prim opt"))
+        {
+            nlopt::opt opt(nlopt::LD_MMA, 1);
+            opt.set_min_objective(myvfunc, NULL);
+            opt.set_xtol_rel(1e-4);
+            std::vector<double> x;
+            x.push_back(-1);
+            double minf;
+            try {
+                nlopt::result result = opt.optimize(x, minf);
+                std::cout << "found minimum at f(" << x[0] << ") = "
+                    << std::setprecision(10) << minf << std::endl;
+            }
+            catch (std::exception& e) {
+                std::cout << "nlopt failed: " << e.what() << std::endl;
+            }
         }
 
         ImGui::End();

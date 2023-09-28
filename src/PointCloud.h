@@ -23,7 +23,7 @@ public:
 	inline Point_3							Point(int ind) const { return m_pointset.point(ind); }
 	inline Vector_3							Normal(int ind) const { return m_pointset.normal(ind); }
 	inline bool								Empty() const { return n_points() == 0; }
-	inline void								clear() { m_pointset.clear(); }
+	inline void								clear() { m_pointset.clear(); kd_tree.clear(); m_primitives.clear(); }
 	inline void								insert(Point_3 point) { m_pointset.insert(point); }
 	void									SetColor(const Color& color);
 	Eigen::MatrixXd							GetPoints() const;
