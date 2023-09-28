@@ -12,14 +12,6 @@
 #include "TriMesh.h"
 #include "PointCloud.h"
 
-double myvfunc(const std::vector<double>& x, std::vector<double>& grad, void* my_func_data)
-{
-    if (!grad.empty()) {
-        grad[0] = 2 * x[0];
-    }
-    return x[0] * x[0];
-}
-
 void ScreenShot(igl::opengl::glfw::Viewer& viewer, const std::string& save_path = "res/screenshot.png", int image_width = 1920, int image_height = 1080)
 {
     // Allocate temporary buffers for image
