@@ -53,6 +53,41 @@ static double dot_vector(const Vector_3& v1, const Vector_3& v2)
     return v1.x() * v2.x() + v1.y() * v2.y() + v1.z() * v2.z();
 }
 
+std::array<Eigen::Matrix3d, 6> getRotationMat(double alpha, double beta, double zeta)
+{
+    //return the three rotation matrix and their derivative (R1, R2, R3, dR1, dR2, dR3)
+    //alpha beta zeta : rad
+
+    Eigen::Matrix3d R1, R2, R3, dR1, dR2, dR3;
+
+    R1 << 1, 0, 0,
+        0, std::cos(alpha), std::sin(alpha),
+        0, -std::sin(alpha), std::cos(alpha);
+
+    R2 << std::cos(beta), 0, -std::sin(beta),
+        0, 1, 0,
+        std::sin(beta), 0, std::cos(beta);
+
+    R3 << std::cos(zeta), std::sin(zeta), 0,
+        -std::sin(zeta), std::cos(zeta), 0,
+        0, 0, 1;
+
+    dR1 << 0, 0, 0,
+        0, -std::sin(alpha), std::cos(alpha),
+        0, -std::cos(alpha), -std::sin(alpha);
+
+    dR2 << -std::sin(beta), 0, -std::cos(beta),
+        0, 0, 0,
+        std::cos(beta), 0, -std::sin(beta);
+
+    dR3 << -std::sin(zeta), std::cos(zeta), 0,
+        -std::cos(zeta), -std::sin(zeta), 0,
+        0, 0, 0;
+
+    std::array<Eigen::Matrix3d, 6> result = { R1, R2, R3, dR1, dR2, dR3 };
+    return result;
+}
+
 template <class OutputIterator>
 void alpha_edges(const Alpha_shape_2& A, OutputIterator out)
 {
@@ -1385,4 +1420,72 @@ Primitive PointCloud::merge_primives(const std::vector<Primitive>& primitives)
     mergedPrimitive.set_target_normal(primitives[0].target_normal);
     
     return mergedPrimitive;
+}
+
+double energyfunc(const std::vector<double>& x, std::vector<double>& grad, void* my_func_data)
+{
+    // x : (alpha, beta, zeta, d1...dn), my_func_data : pointer to the primitives
+    std::vector<Primitive>* primitives = static_cast<std::vector<Primitive>*>(my_func_data);
+    std::array<Eigen::Matrix3d, 6> rmatrix = getRotationMat(x[0], x[1], x[2]);
+    Eigen::Matrix3d R1 = rmatrix[0], R2 = rmatrix[1], R3 = rmatrix[2];
+    Eigen::Matrix3d dR1 = rmatrix[3], dR2 = rmatrix[4], dR3 = rmatrix[5];
+
+    if (!grad.empty()) {
+        for (int i = 0; i < grad.size(); i++)
+            grad[i] = 0.0;
+        for (int i = 0; i < primitives->size(); i++)
+        {
+            Vector_3 tn = (*primitives)[i].target_normal;
+            Eigen::Vector3d vtn, vtn0, vtn1, vtn2;
+            vtn << tn[0], tn[1], tn[2];
+            vtn0 = vtn; vtn1 = vtn; vtn2 = vtn;
+            vtn = R1 * R2 * R3 * vtn;
+            vtn0= dR1 * R2 * R3 * vtn;
+            vtn1 = R1 * dR2 * R3 * vtn;
+            vtn2 = R1 * R2 * dR3 * vtn;
+            vtn = vtn.normalized();
+            vtn0 = vtn.normalized();
+            vtn1 = vtn.normalized();
+            vtn2 = vtn.normalized();
+            Eigen::Vector4d vf, vf0, vf1, vf2;
+            vf << vtn(0), vtn(1), vtn(2), x[i + 3];
+            vf0 << vtn0(0), vtn0(1), vtn0(2), 0;
+            vf1 << vtn1(0), vtn1(1), vtn1(2), 0;
+            vf2 << vtn2(0), vtn2(1), vtn2(2), 0;
+            for (int j = 0; j < (*primitives)[i].points.size(); j++)
+            {
+                Point_3 p = (*primitives)[i].points[j].get<0>();
+                Eigen::Vector4d vj;
+                vj << p[0], p[1], p[2], 1;
+                grad[0] = grad[0] + 2 * vf.dot(vj) * vf0.dot(vj);
+                grad[1] = grad[1] + 2 * vf.dot(vj) * vf1.dot(vj);
+                grad[2] = grad[2] + 2 * vf.dot(vj) * vf2.dot(vj);
+                grad[i] = grad[i] + 2 * vf.dot(vj);
+            }
+        }
+    }
+    double result = 0.0;
+    for (int i = 0; i < primitives->size(); i++)
+    {
+        //compute the points' distance to plane
+        Vector_3 tn = (*primitives)[i].target_normal;
+        Eigen::Vector3d vtn;
+        vtn << tn[0], tn[1], tn[2];
+        vtn = R1 * R2 * R3 * vtn;
+        vtn = vtn.normalized();
+        Plane_3 plane(vtn(0), vtn(1), vtn(2), x[i + 3]);
+        for (int j = 0; j < (*primitives)[i].points.size(); j++)
+        {
+            Point_3 p = (*primitives)[i].points[j].get<0>();
+            double squaredist = CGAL::squared_distance(p, plane);
+            result += squaredist;
+        }
+    }
+    return result;
+}
+
+void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::array<double, 3>& angles)
+{
+    // rotation angles : alpha, beta, zeta
+
 }

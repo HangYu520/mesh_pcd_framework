@@ -70,6 +70,7 @@ public:
 	void									set_symmetry(std::vector<Primitive>& primitives, std::vector<Vector_3>& ortho_dirs, double epsilon); //epsilon : threshold to detect symmetry
 	void									set_coplanar(std::vector<Primitive>& primitives, double delta); // delta : distance threshold to detect coplanar
 	Primitive								merge_primives(const std::vector<Primitive>& primitives); //return the merged primitive
+	void									primitive_optimize(std::vector<Primitive>& primitives, std::array<double, 3>& angles); //angles : rotation angles
 private:
 	Eigen::MatrixXd							GetColors() const;
 };

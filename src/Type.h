@@ -21,8 +21,8 @@
 #include <boost/random.hpp>
 #include <utility>
 #include <limits>
-#include<nlopt.h>
-#include<nlopt.hpp>
+#include <nlopt.h>
+#include <nlopt.hpp>
 #include "spdlog/spdlog.h"
 
 
