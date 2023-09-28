@@ -42,6 +42,7 @@ public:
 	void									DrawPrallel(igl::opengl::glfw::Viewer& viewer, double tau);
 	void									DrawSymm(igl::opengl::glfw::Viewer& viewer, double epsilon);
 	void									DrawCoplanar(igl::opengl::glfw::Viewer& viewer, double delta);
+	void									DrawOptPrim(igl::opengl::glfw::Viewer& viewer);
 	//algo
 	Vector_3								RandomUnitNormal();
 	std::vector<Color>						randomColor(int n_colors); //generate n colors randomly
@@ -71,6 +72,7 @@ public:
 	void									set_coplanar(std::vector<Primitive>& primitives, double delta); // delta : distance threshold to detect coplanar
 	Primitive								merge_primives(const std::vector<Primitive>& primitives); //return the merged primitive
 	void									primitive_optimize(std::vector<Primitive>& primitives, std::array<double, 3>& angles); //angles : rotation angles
+	void									ProjectPrim(std::vector<Primitive>& primitives);
 private:
 	Eigen::MatrixXd							GetColors() const;
 };

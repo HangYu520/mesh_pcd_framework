@@ -434,20 +434,7 @@ int main(int argc, char *argv[])
         }
         if (ImGui::Button("prim opt"))
         {
-            nlopt::opt opt(nlopt::LD_MMA, 1);
-            opt.set_min_objective(myvfunc, NULL);
-            opt.set_xtol_rel(1e-4);
-            std::vector<double> x;
-            x.push_back(-1);
-            double minf;
-            try {
-                nlopt::result result = opt.optimize(x, minf);
-                std::cout << "found minimum at f(" << x[0] << ") = "
-                    << std::setprecision(10) << minf << std::endl;
-            }
-            catch (std::exception& e) {
-                std::cout << "nlopt failed: " << e.what() << std::endl;
-            }
+            pointcloud.DrawOptPrim(viewer);
         }
 
         ImGui::End();
