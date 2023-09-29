@@ -442,8 +442,8 @@ int main(int argc, char *argv[])
             pointcloud.DrawOrthoDir(viewer);
             pointcloud.DrawPrallel(viewer, 10);
             pointcloud.DrawSymm(viewer, 0.1);
-            //pointcloud.DrawCoplanar(viewer, 0.01);
             pointcloud.DrawOptPrim(viewer);
+            pointcloud.DrawCoplanar(viewer, 0.01);
         }
 
         ImGui::End();
