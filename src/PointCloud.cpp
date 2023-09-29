@@ -1541,7 +1541,7 @@ void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::arr
     spdlog::info("start optimization");
     nlopt::opt opt(nlopt::LN_SBPLX, optprim.size() + 3);
     opt.set_min_objective(energyfunc, &optprim);
-    opt.set_xtol_rel(1e-4);
+    opt.set_xtol_rel(1e-2);
     //opt.set_maxeval(50000);
     std::vector<double> x = { 0.0,0.0,0.0 };
     for (int i = 0; i < optprim.size(); i++)
@@ -1644,7 +1644,7 @@ void PointCloud::primitive_optimize_beta(std::vector<Primitive>& primitives, std
     opt.set_lower_bounds(lb);
     opt.set_upper_bounds(ub);
     opt.set_min_objective(energyfunc_beta, &optprim);
-    opt.set_xtol_rel(1e-4);
+    opt.set_xtol_rel(1e-2);
     //opt.set_maxeval(1000);
     std::vector<double> x = { 0.0,0.0,0.0 };
     double minf;
