@@ -106,6 +106,7 @@ void TriMesh::Draw(igl::opengl::glfw::Viewer& viewer) const
 		return;
 	viewer.data().clear();
 	viewer.data().set_mesh(m_vertices, m_faces);
+	viewer.data().double_sided = true;
 	viewer.core().align_camera_center(m_vertices, m_faces);
 }
 

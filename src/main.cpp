@@ -428,6 +428,23 @@ int main(int argc, char *argv[])
         {
             pointcloud.DrawOptPrim(viewer);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("res mesh"))
+        {
+            ReadFile();
+            mesh.ReadFromFile("res/pcd/save/out.obj");
+            Update();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("run with default param"))
+        {
+            pointcloud.DrawRegiongrow(viewer, 3, 20);
+            pointcloud.DrawOrthoDir(viewer);
+            pointcloud.DrawPrallel(viewer, 10);
+            pointcloud.DrawSymm(viewer, 0.1);
+            pointcloud.DrawCoplanar(viewer, 0.01);
+            pointcloud.DrawOptPrim(viewer);
+        }
 
         ImGui::End();
 

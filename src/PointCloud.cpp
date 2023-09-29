@@ -642,6 +642,7 @@ void PointCloud::DrawOptPrim(igl::opengl::glfw::Viewer& viewer)
 {
     primitive_optimize(m_primitives, std::array<double, 3>{0.0, 0.0, 0.0});
     ProjectPrim(m_primitives);
+    saveVGfile(m_primitives, "res/pcd/save/out.vg");
     if (Empty())
         return;
     viewer.data().clear_points();
@@ -1537,9 +1538,9 @@ void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::arr
     Timer timer;
     timer.start();
     spdlog::info("start optimization");
-    nlopt::opt opt(nlopt::LN_COBYLA, optprim.size() + 3);
+    nlopt::opt opt(nlopt::LN_SBPLX, optprim.size() + 3);
     opt.set_min_objective(energyfunc, &optprim);
-    opt.set_xtol_rel(1e-4);
+    opt.set_xtol_rel(1e-2);
     //opt.set_maxeval(1000);
     std::vector<double> x = { 0.0,0.0,0.0 };
     for (int i = 0; i < optprim.size(); i++)
@@ -1584,4 +1585,55 @@ void PointCloud::ProjectPrim(std::vector<Primitive>& primitives)
             primitives[i].points[j].get<0>() = q;
         }
     }
+}
+
+void PointCloud::saveVGfile(const std::vector<Primitive>& primitives, const std::string& filepath)
+{
+    std::fstream file(filepath, std::ios::binary | std::ios::out);
+    std::vector<Point_3> points;
+    std::vector<Vector_3> normals;
+    std::vector<int> start_idx;
+    std::vector<Color> colors = randomColor(primitives.size());
+    for (int i = 0; i < primitives.size(); i++)
+    {
+        Primitive prim = primitives[i];
+        start_idx.push_back(points.size());
+        for (int j = 0; j < prim.points.size(); j++)
+        {
+            points.push_back(prim.points[j].get<0>());
+            normals.push_back(prim.plane.orthogonal_vector());
+        }
+    }
+    //write file
+    file << "num_points: " << points.size() << "\n";
+    for (Point_3 point : points)
+        file << point[0] << " " << point[1] << " " << point[2] << " ";
+    file << "\n";
+    file << "num_colors: " << 0 << "\n";
+    file << "num_normals: " << normals.size() << "\n";
+    for (Vector_3 normal : normals)
+        file << normal[0] << " " << normal[1] << " " << normal[2] << " ";
+    file << "\n";
+    file << "num_groups: " << primitives.size() << "\n";
+    for (int i = 0; i < primitives.size(); i++)
+    {
+        file << "group_type: 0\n";
+        file << "num_group_parameters: 4\n";
+        file << "group_parameters: " << primitives[i].plane.a() << " " << primitives[i].plane.b() << " "
+            << primitives[i].plane.c() << " " << primitives[i].plane.d() << "\n";
+        file << "group_label: group_" << i << "\n";
+        file << "group_color: " << colors[i][0] << " " << colors[i][1] << " " << colors[i][2] << "\n";
+        file << "group_num_point: " << primitives[i].points.size() << "\n";
+        int start = start_idx[i];
+        int end;
+        if (i == primitives.size() - 1)
+            end = points.size();
+        else
+            end = start_idx[i + 1];
+        for (int j = start; j < end; j++)
+            file << j << " ";
+        file << "\n";
+        file << "num_children: 0\n";
+    }
+    spdlog::info("primitives saved to {}", filepath);
 }

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <sstream>
+#include <fstream>
 #include <vector>
 #include <queue>
 #include <unordered_map>
@@ -73,6 +74,7 @@ public:
 	Primitive								merge_primives(const std::vector<Primitive>& primitives); //return the merged primitive
 	void									primitive_optimize(std::vector<Primitive>& primitives, std::array<double, 3>& angles); //angles : rotation angles
 	void									ProjectPrim(std::vector<Primitive>& primitives);
+	void									saveVGfile(const std::vector<Primitive>& primitives, const std::string& filepath);//save as .vg file
 private:
 	Eigen::MatrixXd							GetColors() const;
 };
