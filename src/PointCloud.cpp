@@ -1416,7 +1416,7 @@ void PointCloud::set_coplanar(std::vector<Primitive>& primitives, double delta)
             if (j == i || remainPrimitives.find(j) == remainPrimitives.end() || primitives[j].target_normal == Vector_3(0.0, 0.0, 0.0))
                 continue;
             bool ispara = primitives[i].target_normal == primitives[j].target_normal;
-            bool isnear = abs(primitives[i].plane.d() - primitives[j].plane.d()) < delta;
+            bool isnear = CGAL::squared_distance(primitives[i].plane, primitives[j].plane) < delta * delta;
             if (ispara && isnear)
             {
                 merge_prim.push_back(primitives[j]);
