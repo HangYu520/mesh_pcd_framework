@@ -645,7 +645,6 @@ void PointCloud::DrawOptPrim(igl::opengl::glfw::Viewer& viewer, bool beta)
     else
         primitive_optimize(m_primitives, std::array<double, 3>{0.0, 0.0, 0.0});
     ProjectPrim(m_primitives);
-    saveVGfile(m_primitives, "res/pcd/save/out.vg");
     if (Empty())
         return;
     viewer.data().clear_points();
@@ -1748,5 +1747,11 @@ void PointCloud::saveVGfile(const std::vector<Primitive>& primitives, const std:
         file << "\n";
         file << "num_children: 0\n";
     }
+    spdlog::info("primitives saved to {}", filepath);
+}
+
+void PointCloud::saveVGfile(const std::string& filepath)
+{
+    saveVGfile(m_primitives, filepath);
     spdlog::info("primitives saved to {}", filepath);
 }

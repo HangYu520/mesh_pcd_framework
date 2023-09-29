@@ -444,11 +444,18 @@ int main(int argc, char *argv[])
             pointcloud.DrawSymm(viewer, 0.1);
             pointcloud.DrawOptPrim(viewer, true);
             pointcloud.DrawCoplanar(viewer, 0.01);
+            pointcloud.saveVGfile("res/pcd/save/out.vg");
         }
         if (ImGui::Button("prim opt2"))
         {
             pointcloud.DrawOptPrim(viewer, true);
         }
+        ImGui::SameLine();
+        if (ImGui::Button("save vg"))
+        {
+            pointcloud.saveVGfile("res/pcd/save/out.vg");
+        }
+
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width, 0), ImGuiCond_FirstUseEver);

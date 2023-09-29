@@ -76,6 +76,7 @@ public:
 	void									primitive_optimize_beta(std::vector<Primitive>& primitives, std::array<double, 3>& angles);
 	void									ProjectPrim(std::vector<Primitive>& primitives);
 	void									saveVGfile(const std::vector<Primitive>& primitives, const std::string& filepath);//save as .vg file
+	void									saveVGfile(const std::string& filepath); //save m_primitives
 private:
 	Eigen::MatrixXd							GetColors() const;
 };
