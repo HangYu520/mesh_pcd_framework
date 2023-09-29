@@ -1753,5 +1753,4 @@ void PointCloud::saveVGfile(const std::vector<Primitive>& primitives, const std:
 void PointCloud::saveVGfile(const std::string& filepath)
 {
     saveVGfile(m_primitives, filepath);
-    spdlog::info("primitives saved to {}", filepath);
 }
