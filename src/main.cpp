@@ -442,10 +442,13 @@ int main(int argc, char *argv[])
             pointcloud.DrawOrthoDir(viewer);
             pointcloud.DrawPrallel(viewer, 10);
             pointcloud.DrawSymm(viewer, 0.1);
-            pointcloud.DrawOptPrim(viewer);
+            pointcloud.DrawOptPrim(viewer, true);
             pointcloud.DrawCoplanar(viewer, 0.01);
         }
-
+        if (ImGui::Button("prim opt2"))
+        {
+            pointcloud.DrawOptPrim(viewer, true);
+        }
         ImGui::End();
 
         ImGui::SetNextWindowPos(ImVec2(180.f * menu.menu_scaling() + pcd_window_width, 0), ImGuiCond_FirstUseEver);

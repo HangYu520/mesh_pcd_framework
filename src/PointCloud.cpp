@@ -638,9 +638,12 @@ void PointCloud::DrawCoplanar(igl::opengl::glfw::Viewer& viewer, double delta)
     viewer.core().align_camera_center(P);
 }
 
-void PointCloud::DrawOptPrim(igl::opengl::glfw::Viewer& viewer)
+void PointCloud::DrawOptPrim(igl::opengl::glfw::Viewer& viewer, bool beta)
 {
-    primitive_optimize(m_primitives, std::array<double, 3>{0.0, 0.0, 0.0});
+    if(beta)
+        primitive_optimize_beta(m_primitives, std::array<double, 3>{0.0, 0.0, 0.0});
+    else
+        primitive_optimize(m_primitives, std::array<double, 3>{0.0, 0.0, 0.0});
     ProjectPrim(m_primitives);
     saveVGfile(m_primitives, "res/pcd/save/out.vg");
     if (Empty())
@@ -1479,13 +1482,9 @@ double energyfunc(const std::vector<double>& x, std::vector<double>& grad, void*
             vtn << tn[0], tn[1], tn[2];
             vtn0 = vtn; vtn1 = vtn; vtn2 = vtn;
             vtn = R1 * R2 * R3 * vtn;
-            vtn0= dR1 * R2 * R3 * vtn;
-            vtn1 = R1 * dR2 * R3 * vtn;
-            vtn2 = R1 * R2 * dR3 * vtn;
-            vtn = vtn.normalized();
-            vtn0 = vtn.normalized();
-            vtn1 = vtn.normalized();
-            vtn2 = vtn.normalized();
+            vtn0= dR1 * R2 * R3 * vtn0;
+            vtn1 = R1 * dR2 * R3 * vtn1;
+            vtn2 = R1 * R2 * dR3 * vtn2;
             Eigen::Vector4d vf, vf0, vf1, vf2;
             vf << vtn(0), vtn(1), vtn(2), x[i + 3];
             vf0 << vtn0(0), vtn0(1), vtn0(2), 0;
@@ -1511,7 +1510,6 @@ double energyfunc(const std::vector<double>& x, std::vector<double>& grad, void*
         Eigen::Vector3d vtn;
         vtn << tn[0], tn[1], tn[2];
         vtn = R1 * R2 * R3 * vtn;
-        vtn = vtn.normalized();
         Plane_3 plane(vtn(0), vtn(1), vtn(2), x[i + 3]);
         for (int j = 0; j < (*primitives)[i].points.size(); j++)
         {
@@ -1532,7 +1530,10 @@ void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::arr
         if (primitives[i].target_normal == Vector_3(0.0, 0.0, 0.0))
             zprim.push_back(primitives[i]);
         else
+        {
+            primitives[i].set_target_normal(primitives[i].target_normal / sqrt(primitives[i].target_normal.squared_length()));
             optprim.push_back(primitives[i]);
+        }
     }
     //optimization
     Timer timer;
@@ -1540,11 +1541,13 @@ void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::arr
     spdlog::info("start optimization");
     nlopt::opt opt(nlopt::LN_SBPLX, optprim.size() + 3);
     opt.set_min_objective(energyfunc, &optprim);
-    opt.set_xtol_rel(1e-2);
-    //opt.set_maxeval(1000);
+    opt.set_xtol_rel(1e-4);
+    //opt.set_maxeval(50000);
     std::vector<double> x = { 0.0,0.0,0.0 };
     for (int i = 0; i < optprim.size(); i++)
+    {
         x.push_back(optprim[i].plane.d());
+    }
     double minf;
     try {
         nlopt::result result = opt.optimize(x, minf);
@@ -1563,11 +1566,121 @@ void PointCloud::primitive_optimize(std::vector<Primitive>& primitives, std::arr
         Vector_3 tn = optprim[i].target_normal;
         Eigen::Vector3d vtn;
         vtn << tn[0], tn[1], tn[2];
-        vtn = vtn.normalized();
         std::array<Eigen::Matrix3d, 6> rmatrix = getRotationMat(x[0], x[1], x[2]);
         Eigen::Matrix3d R1 = rmatrix[0], R2 = rmatrix[1], R3 = rmatrix[2];
         vtn = R1 * R2 * R3 * vtn;
         Plane_3 plane(vtn(0), vtn(1), vtn(2), x[i + 3]);
+        Primitive prim(optprim[i].points, plane);
+        prim.set_target_normal(optprim[i].target_normal);
+        primitives.push_back(prim);
+    }
+}
+
+double energyfunc_beta(const std::vector<double>& x, std::vector<double>& grad, void* my_func_data)
+{
+    static int count2 = 0;
+    spdlog::info("iteration {}", ++count2);
+    // x : (alpha, beta, zeta), my_func_data : pointer to the primitives
+    std::vector<Primitive>* primitives = static_cast<std::vector<Primitive>*>(my_func_data);
+    std::array<Eigen::Matrix3d, 6> rmatrix = getRotationMat(x[0], x[1], x[2]);
+    Eigen::Matrix3d R1 = rmatrix[0], R2 = rmatrix[1], R3 = rmatrix[2];
+    Eigen::Matrix3d dR1 = rmatrix[3], dR2 = rmatrix[4], dR3 = rmatrix[5];
+
+    if (!grad.empty()) {
+        grad[0] = 0.0; grad[1] = 0.0; grad[2] = 0.0;
+        for (int i = 0; i < primitives->size(); i++)
+        {
+            Vector_3 tn = (*primitives)[i].target_normal;
+            Vector_3 n = (*primitives)[i].plane.orthogonal_vector();
+            Eigen::Vector3d vtn, vtn0, vtn1, vtn2, vn;
+            vtn << tn[0], tn[1], tn[2];
+            vtn0 = dR1 * R2 * R3 * vtn;
+            vtn1 = R1 * dR2 * R3 * vtn;
+            vtn2 = R1 * R2 * dR3 * vtn;
+            vn << n[0], n[1], n[2];
+            grad[0] -= vtn0.dot(vn);
+            grad[1] -= vtn1.dot(vn);
+            grad[2] -= vtn2.dot(vn);
+        }
+    }
+    double result = 0.0;
+    for (int i = 0; i < primitives->size(); i++)
+    {
+        //compute the points' distance to plane
+        Vector_3 tn = (*primitives)[i].target_normal;
+        Vector_3 n = (*primitives)[i].plane.orthogonal_vector();
+        Eigen::Vector3d vtn, vn;
+        vtn << tn[0], tn[1], tn[2];
+        vn << n[0], n[1], n[2];
+        vtn = R1 * R2 * R3 * vtn;
+        result -= vtn.dot(vn);
+    }
+    return result;
+}
+
+void PointCloud::primitive_optimize_beta(std::vector<Primitive>& primitives, std::array<double, 3>& angles)
+{
+    // rotation angles : alpha, beta, zeta
+    std::vector<Primitive> zprim, optprim;
+    for (int i = 0; i < primitives.size(); i++)
+    {
+        if (primitives[i].target_normal == Vector_3(0.0, 0.0, 0.0))
+            zprim.push_back(primitives[i]);
+        else
+        {
+            primitives[i].set_target_normal(primitives[i].target_normal / sqrt(primitives[i].target_normal.squared_length()));
+            optprim.push_back(primitives[i]);
+        }
+    }
+    //optimization
+    Timer timer;
+    timer.start();
+    spdlog::info("start optimization");
+    std::vector<double> lb(3);
+    lb[0] = -2 * PI; lb[1] = -2 * PI; lb[2] = -2 * PI;
+    std::vector<double> ub(3);
+    ub[0] = 2 * PI; ub[1] = 2 * PI; ub[2] = 2 * PI;
+    nlopt::opt opt(nlopt::LD_TNEWTON, 3);
+    opt.set_lower_bounds(lb);
+    opt.set_upper_bounds(ub);
+    opt.set_min_objective(energyfunc_beta, &optprim);
+    opt.set_xtol_rel(1e-4);
+    //opt.set_maxeval(1000);
+    std::vector<double> x = { 0.0,0.0,0.0 };
+    double minf;
+    try {
+        nlopt::result result = opt.optimize(x, minf);
+        spdlog::info("converge. Time {:.3f} s, alpha {:3f}, beta {:.3f}, zeta {:.3f}",
+            timer.time(), RadToDeg(x[0]), RadToDeg(x[1]), RadToDeg(x[2]));
+    }
+    catch (std::exception& e) {
+        spdlog::error("optimization failed!");
+    }
+    //update the primitives
+    spdlog::info("update primitive...");
+    primitives.clear();
+    for (auto prim : zprim)
+        primitives.push_back(prim);
+    for (int i = 0; i < optprim.size(); i++)
+    {
+        Vector_3 tn = optprim[i].target_normal;
+        Eigen::Vector3d vtn;
+        vtn << tn[0], tn[1], tn[2];
+        std::array<Eigen::Matrix3d, 6> rmatrix = getRotationMat(x[0], x[1], x[2]);
+        Eigen::Matrix3d R1 = rmatrix[0], R2 = rmatrix[1], R3 = rmatrix[2];
+        vtn = R1 * R2 * R3 * vtn;
+        Eigen::Vector3d n;
+        n << vtn[0], vtn[1], vtn[2];
+        double d = 0.0;
+        for (int j = 0; j < optprim[i].points.size(); j++)
+        {
+            Eigen::Vector3d p;
+            Point_3 point = optprim[i].points[j].get<0>();
+            p << point[0], point[1], point[2];
+            d += n.dot(p);
+        }
+        d /= optprim[i].points.size();
+        Plane_3 plane(vtn(0), vtn(1), vtn(2), -d);
         Primitive prim(optprim[i].points, plane);
         prim.set_target_normal(optprim[i].target_normal);
         primitives.push_back(prim);
